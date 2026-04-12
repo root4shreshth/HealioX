@@ -80,6 +80,66 @@ export async function POST() {
         ndis_number: "NDIS-3345678",
         organization_id: "00000000-0000-0000-0000-000000000001",
       },
+      {
+        id: "00000000-0000-0000-0000-000000000105",
+        full_name: "Dorothy Williams",
+        date_of_birth: "1939-06-18",
+        address: "31 Swan View Tce, Dalkeith WA 6009",
+        lat: -31.9920,
+        lng: 115.7960,
+        risk_level: "moderate",
+        risk_score: 55,
+        primary_conditions: ["Dementia (Early Stage)", "Osteoporosis", "Vision Impairment"],
+        emergency_contact_name: "James Williams",
+        emergency_contact_phone: "0456 789 012",
+        ndis_number: "NDIS-8812345",
+        organization_id: "00000000-0000-0000-0000-000000000001",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000106",
+        full_name: "Frank O'Brien",
+        date_of_birth: "1943-02-25",
+        address: "8 Hampden Rd, Cottesloe WA 6011",
+        lat: -31.9950,
+        lng: 115.7550,
+        risk_level: "high",
+        risk_score: 42,
+        primary_conditions: ["Stroke Recovery", "Aphasia", "Limited Mobility"],
+        emergency_contact_name: "Patricia O'Brien",
+        emergency_contact_phone: "0467 890 123",
+        ndis_number: "NDIS-9923456",
+        organization_id: "00000000-0000-0000-0000-000000000001",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000107",
+        full_name: "Edith Nakamura",
+        date_of_birth: "1947-09-12",
+        address: "15 Broome St, Mosman Park WA 6012",
+        lat: -32.0020,
+        lng: 115.7660,
+        risk_level: "low",
+        risk_score: 79,
+        primary_conditions: ["Type 2 Diabetes", "Mild Depression"],
+        emergency_contact_name: "Kenji Nakamura",
+        emergency_contact_phone: "0478 901 234",
+        ndis_number: "NDIS-1134567",
+        organization_id: "00000000-0000-0000-0000-000000000001",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000108",
+        full_name: "George Papadopoulos",
+        date_of_birth: "1936-12-03",
+        address: "44 Thomas St, West Perth WA 6005",
+        lat: -31.9480,
+        lng: 115.8400,
+        risk_level: "emergency",
+        risk_score: 22,
+        primary_conditions: ["Heart Failure", "Chronic Kidney Disease", "Fall Risk"],
+        emergency_contact_name: "Maria Papadopoulos",
+        emergency_contact_phone: "0489 012 345",
+        ndis_number: "NDIS-2245678",
+        organization_id: "00000000-0000-0000-0000-000000000001",
+      },
     ];
 
     for (const patient of patients) {
@@ -108,11 +168,36 @@ export async function POST() {
       },
     ];
 
-    // Clear existing alerts first to avoid duplicates
-    await supabase.from("alerts").delete().in("patient_id", [
-      "00000000-0000-0000-0000-000000000103",
-      "00000000-0000-0000-0000-000000000101",
-    ]);
+    // Also add alerts for new patients
+    alerts.push(
+      {
+        patient_id: "00000000-0000-0000-0000-000000000106",
+        type: "health_decline",
+        severity: "urgent" as const,
+        title: "Stroke Recovery Concern — Frank O'Brien",
+        description: "Speech therapy progress has plateaued. Mobility declining over past 2 weeks. Care plan review recommended.",
+        status: "active" as const,
+      },
+      {
+        patient_id: "00000000-0000-0000-0000-000000000108",
+        type: "health_decline",
+        severity: "emergency" as const,
+        title: "EMERGENCY — George Papadopoulos",
+        description: "Risk score dropped to 22. Multiple organ concerns. Heart failure symptoms worsening. Immediate medical review required.",
+        status: "active" as const,
+      },
+      {
+        patient_id: "00000000-0000-0000-0000-000000000105",
+        type: "risk_change",
+        severity: "warning" as const,
+        title: "Cognitive Decline — Dorothy Williams",
+        description: "Caregiver reports increased confusion during last 3 visits. Forgot medication twice this week. Dementia screening recommended.",
+        status: "active" as const,
+      }
+    );
+
+    // Clear existing alerts to avoid duplicates
+    await supabase.from("alerts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
     for (const alert of alerts) {
       await supabase.from("alerts").insert(alert);
@@ -223,6 +308,45 @@ export async function POST() {
           scheduled_end: `${today}T15:45:00+08:00`,
           status: "scheduled",
         },
+        // New patients
+        {
+          patient_id: "00000000-0000-0000-0000-000000000105",
+          caregiver_id: caregiverId,
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          scheduled_start: `${today}T08:00:00+08:00`,
+          scheduled_end: `${today}T08:45:00+08:00`,
+          status: "completed",
+          check_in_time: `${today}T08:03:00+08:00`,
+          check_out_time: `${today}T08:40:00+08:00`,
+          gps_verified: true,
+          duration_minutes: 37,
+          services: ["Personal Care", "Medication Assistance", "Meal Preparation"],
+          caregiver_notes: "Dorothy was slightly confused this morning but responded well to gentle reminders. Took all medications with assistance.",
+        },
+        {
+          patient_id: "00000000-0000-0000-0000-000000000106",
+          caregiver_id: caregiverId,
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          scheduled_start: `${today}T11:30:00+08:00`,
+          scheduled_end: `${today}T12:30:00+08:00`,
+          status: "scheduled",
+        },
+        {
+          patient_id: "00000000-0000-0000-0000-000000000107",
+          caregiver_id: caregiverId,
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          scheduled_start: `${today}T14:00:00+08:00`,
+          scheduled_end: `${today}T14:45:00+08:00`,
+          status: "scheduled",
+        },
+        {
+          patient_id: "00000000-0000-0000-0000-000000000108",
+          caregiver_id: caregiverId,
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          scheduled_start: `${today}T16:00:00+08:00`,
+          scheduled_end: `${today}T17:00:00+08:00`,
+          status: "scheduled",
+        },
       ];
 
       for (const visit of visits) {
@@ -269,7 +393,7 @@ export async function POST() {
     // 6. Link demo users to patients via patient_assignments
     // Find demo users by email and create assignments
     const demoLinks = [
-      { email: "caregiver@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101", "00000000-0000-0000-0000-000000000102", "00000000-0000-0000-0000-000000000103", "00000000-0000-0000-0000-000000000104"], relationship: "caregiver" },
+      { email: "caregiver@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101", "00000000-0000-0000-0000-000000000102", "00000000-0000-0000-0000-000000000103", "00000000-0000-0000-0000-000000000104", "00000000-0000-0000-0000-000000000105", "00000000-0000-0000-0000-000000000106", "00000000-0000-0000-0000-000000000107", "00000000-0000-0000-0000-000000000108"], relationship: "caregiver" },
       { email: "patient@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "self" },
       { email: "family@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "family_member" },
     ];
