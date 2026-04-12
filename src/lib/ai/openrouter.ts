@@ -1,13 +1,20 @@
 import OpenAI from "openai";
 
-const openrouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    "X-Title": "HealioX Care Intelligence",
-  },
-});
+// Lazy-initialize to avoid build-time crash when env vars aren't set
+let _openrouter: OpenAI | null = null;
+function getClient() {
+  if (!_openrouter) {
+    _openrouter = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY || "missing",
+      defaultHeaders: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "HealioX Care Intelligence",
+      },
+    });
+  }
+  return _openrouter;
+}
 
 // Model config per task — free models first, paid fallback
 const MODEL_CONFIG = {
@@ -45,7 +52,7 @@ export async function aiComplete(
   const model = options?.forceModel || config.primary;
 
   try {
-    const response = await openrouter.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model,
       messages: [
         { role: "system", content: systemPrompt },
@@ -81,7 +88,7 @@ export async function aiChatComplete(
   const config = MODEL_CONFIG[taskType];
 
   try {
-    const response = await openrouter.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model: config.primary,
       messages,
       temperature: options?.temperature ?? 0.7,
@@ -94,7 +101,7 @@ export async function aiChatComplete(
     };
   } catch (error) {
     // Fallback
-    const response = await openrouter.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model: config.fallback,
       messages,
       temperature: options?.temperature ?? 0.7,
