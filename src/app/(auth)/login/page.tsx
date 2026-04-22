@@ -11,12 +11,11 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-// Role → home path (must match middleware)
 function homeForRole(role: string): string {
   switch (role) {
     case "caregiver":      return "/caregiver";
     case "patient":        return "/patient";
-    case "provider_admin": return "/admin";
+    case "provider_admin":
     case "government":     return "/admin";
     default:               return "/dashboard";
   }
@@ -85,93 +84,108 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
 
-      // Step 1: Try sign in with existing account
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      // ── Step 1: Sign in ────────────────────────────────────────────────────
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
       if (!signInError && signInData?.user) {
-        // ── Resolve role from DB (source of truth), fall back to metadata ──
+        const user = signInData.user;
+
+        // ── Fast path: role already in user_metadata (set at signup) ──────
+        // Skips the DB round-trip entirely on repeat logins.
+        const metaRole = (user.app_metadata?.role as string) || (user.user_metadata?.role as string);
+
+        if (metaRole) {
+          // Role known — redirect immediately, no extra DB calls
+          router.push(homeForRole(metaRole));
+          return;
+        }
+
+        // ── Slow path: first login after manual DB insert (no metadata) ───
+        // Only hits the DB when metadata is genuinely missing.
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, full_name")
-          .eq("id", signInData.user.id)
+          .select("role")
+          .eq("id", user.id)
           .single();
 
-        const role = profile?.role || signInData.user.user_metadata?.role || "family";
+        const role = profile?.role || "family";
 
-        // Ensure profile row exists with correct role
-        await supabase.from("profiles").upsert({
-          id: signInData.user.id,
-          email,
-          full_name: profile?.full_name || signInData.user.user_metadata?.full_name || email.split("@")[0],
-          role,
-        });
+        // Write the role into metadata so future logins use the fast path
+        await supabase.auth.updateUser({ data: { role } });
 
         router.push(homeForRole(role));
         return;
       }
 
-      // Step 2: Email not confirmed
+      // ── Step 2: Email not confirmed ────────────────────────────────────────
       if (signInError?.message?.includes("Email not confirmed")) {
         setError("Please confirm your email address first. Check your inbox.");
         setLoading(false);
         return;
       }
 
-      // Step 3: User doesn't exist — try sign up
-      // Role comes from the role they pick during registration.
-      // For demo accounts: derive from email prefix only as last resort.
-      const demoRoleFromEmail = DEMO_ACCOUNTS.find((d) => d.email === email)?.role || "family";
+      // ── Step 3: Account doesn't exist — try signup ─────────────────────────
+      const demoRole = DEMO_ACCOUNTS.find((d) => d.email === email)?.role || "family";
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            full_name: `Demo ${demoRoleFromEmail.replace("_", " ")}`,
-            role: demoRoleFromEmail,
+            full_name: `Demo ${demoRole.replace("_", " ")}`,
+            role: demoRole,
           },
         },
       });
 
       if (signUpError) {
-        if (
+        setError(
           signUpError.message?.includes("already registered") ||
           signUpError.message?.includes("already been registered")
-        ) {
-          setError("Incorrect password. Please try again.");
-        } else {
-          setError(signUpError.message || "Sign up failed. Please try again.");
-        }
+            ? "Incorrect password. Please try again."
+            : signUpError.message || "Sign up failed. Please try again."
+        );
         setLoading(false);
         return;
       }
 
-      // Step 4: If email confirmation is required, sign in after signup
+      // ── Step 4: Email confirmation required — retry sign in ───────────────
       if (!signUpData.session) {
-        const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
         if (retryError || !retryData?.user) {
           setError("Account created. Please confirm your email, then sign in.");
           setLoading(false);
           return;
         }
 
-        const role = retryData.user.user_metadata?.role || demoRoleFromEmail;
+        // Write profile on first-ever signup
         await supabase.from("profiles").upsert({
-          id: retryData.user.id, email,
-          full_name: `Demo ${role.replace("_", " ")}`, role,
+          id: retryData.user.id,
+          email,
+          full_name: `Demo ${demoRole.replace("_", " ")}`,
+          role: demoRole,
         });
-        router.push(homeForRole(role));
+
+        router.push(homeForRole(demoRole));
         return;
       }
 
-      // Step 5: Session created directly via signup (email confirm OFF)
-      if (signUpData?.user) {
-        const role = signUpData.user.user_metadata?.role || demoRoleFromEmail;
+      // ── Step 5: Session from signup (email confirm OFF) ───────────────────
+      if (signUpData.user) {
         await supabase.from("profiles").upsert({
-          id: signUpData.user.id, email,
-          full_name: `Demo ${role.replace("_", " ")}`, role,
+          id: signUpData.user.id,
+          email,
+          full_name: `Demo ${demoRole.replace("_", " ")}`,
+          role: demoRole,
         });
-        router.push(homeForRole(role));
+        router.push(homeForRole(demoRole));
       }
     } catch (err) {
       console.error("Login error:", err);
@@ -201,8 +215,11 @@ export default function LoginPage() {
           <label className="text-sm font-medium" htmlFor="email">Email</label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input id="email" type="email" placeholder="you@example.com" value={email}
-              onChange={(e) => setEmail(e.target.value)} className="pl-10 h-11" required />
+            <Input
+              id="email" type="email" placeholder="you@example.com"
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              className="pl-10 h-11" required
+            />
           </div>
         </div>
 
@@ -213,18 +230,25 @@ export default function LoginPage() {
           </div>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input id="password" type="password" placeholder="Enter your password" value={password}
-              onChange={(e) => setPassword(e.target.value)} className="pl-10 h-11" required />
+            <Input
+              id="password" type="password" placeholder="Enter your password"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              className="pl-10 h-11" required
+            />
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+        {error && (
+          <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+        )}
 
-        <Button type="submit" disabled={loading}
-          className="w-full h-11 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-semibold">
+        <Button
+          type="submit" disabled={loading}
+          className="w-full h-11 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-semibold"
+        >
           {loading
             ? <Loader2 className="w-4 h-4 animate-spin" />
-            : (<>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>)}
+            : <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>}
         </Button>
       </form>
 
@@ -237,6 +261,7 @@ export default function LoginPage() {
           {DEMO_ACCOUNTS.map((d) => (
             <button
               key={d.role}
+              type="button"
               onClick={() => { setEmail(d.email); setPassword("demo123456"); setError(""); }}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg bg-white border border-border ${d.border} transition-colors text-left`}
             >
@@ -263,11 +288,10 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* Admin callout */}
         <div className="mt-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg flex items-start gap-2">
           <Shield className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
           <p className="text-[10px] text-slate-600 leading-relaxed">
-            The <strong>Admin</strong> account has full access to the Admin Portal — caregiver management, patient oversight, revenue dashboard, and org settings.
+            The <strong>Admin</strong> account has full access — caregiver management, patient oversight, revenue dashboard, and org settings.
           </p>
         </div>
       </div>

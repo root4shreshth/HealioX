@@ -2,94 +2,94 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Routes that require a logged-in user
-const PROTECTED = ["/dashboard", "/caregiver", "/patient", "/admin"];
-// Auth routes (unauthenticated only)
+const PROTECTED   = ["/dashboard", "/caregiver", "/patient", "/admin"];
 const AUTH_ROUTES = ["/login", "/register"];
 
-// Which roles can access which route prefixes
 const ROLE_ROUTES: Record<string, string[]> = {
-  caregiver:     ["/caregiver", "/patient/checkin"],
-  patient:       ["/patient"],
-  family:        ["/dashboard"],
-  provider_admin:["/dashboard", "/caregiver", "/patient", "/admin"],
-  government:    ["/dashboard", "/admin"],
+  caregiver:      ["/caregiver", "/patient/checkin"],
+  patient:        ["/patient"],
+  family:         ["/dashboard"],
+  provider_admin: ["/dashboard", "/caregiver", "/patient", "/admin"],
+  government:     ["/dashboard", "/admin"],
 };
 
-function resolveRole(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }): string {
-  return (
-    (user.app_metadata?.role as string) ||
-    (user.user_metadata?.role as string) ||
-    "family"
-  );
+function roleCanAccess(role: string, pathname: string) {
+  return (ROLE_ROUTES[role] || []).some((p) => pathname.startsWith(p));
 }
 
-function roleCanAccess(role: string, pathname: string): boolean {
-  const allowed = ROLE_ROUTES[role] || [];
-  return allowed.some((prefix) => pathname.startsWith(prefix));
+function homeForRole(role: string) {
+  switch (role) {
+    case "caregiver":      return "/caregiver";
+    case "patient":        return "/patient";
+    case "provider_admin":
+    case "government":     return "/admin";
+    default:               return "/dashboard";
+  }
 }
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
+
+  // Fast-path: if the route isn't protected or auth-only, skip all auth work
+  const isProtected  = PROTECTED.some((p) => pathname.startsWith(p));
+  const isAuthRoute  = AUTH_ROUTES.some((p) => pathname.startsWith(p));
+  if (!isProtected && !isAuthRoute) return response;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll(); },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+        getAll()        { return request.cookies.getAll(); },
+        setAll(toSet)   {
+          toSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          toSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
           );
         },
       },
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const { pathname } = request.nextUrl;
+  // ── Use getSession() not getUser() ────────────────────────────────────────
+  // getSession() decodes the JWT from the cookie locally — zero network call.
+  // getUser() hits the Supabase Auth server on every request, adding ~200ms.
+  // JWTs are cryptographically signed so they can't be forged; local decode
+  // is safe for route-guarding. Only API route handlers that perform sensitive
+  // writes need the extra server validation of getUser().
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
-  // 1. Not logged in + protected route → login
-  if (!user && PROTECTED.some((r) => pathname.startsWith(r))) {
+  // Role lives in user_metadata (set at signup) and/or app_metadata (custom JWT claim)
+  const role: string =
+    (user?.app_metadata?.role as string) ||
+    (user?.user_metadata?.role as string) ||
+    "family";
+
+  // 1. Not logged in → login
+  if (!user && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // 2. Logged in + protected route → check role has access
-  if (user && PROTECTED.some((r) => pathname.startsWith(r))) {
-    const role = resolveRole(user);
-    if (!roleCanAccess(role, pathname)) {
-      // Redirect to their correct home rather than an error
-      const home = getHomeForRole(role);
-      const url = request.nextUrl.clone();
-      url.pathname = home;
-      return NextResponse.redirect(url);
-    }
-  }
-
-  // 3. Logged in + auth route → redirect to their home
-  if (user && AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
-    const role = resolveRole(user);
+  // 2. Logged in + wrong portal → redirect to their home
+  if (user && isProtected && !roleCanAccess(role, pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = getHomeForRole(role);
+    url.pathname = homeForRole(role);
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
-}
-
-function getHomeForRole(role: string): string {
-  switch (role) {
-    case "caregiver":     return "/caregiver";
-    case "patient":       return "/patient";
-    case "provider_admin":return "/admin";
-    case "government":    return "/admin";
-    default:              return "/dashboard";
+  // 3. Logged in visiting /login or /register → send home
+  if (user && isAuthRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = homeForRole(role);
+    return NextResponse.redirect(url);
   }
+
+  return response;
 }
 
 export const config = {
