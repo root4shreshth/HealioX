@@ -43,8 +43,8 @@ export function Hero() {
 
             <p className="mt-6 text-lg text-muted-foreground max-w-lg leading-relaxed">
               Verifying every visit. Detecting decline early. Giving families
-              real-time visibility. One platform transforming aged care and NDIS
-              accountability.
+              real-time visibility. One platform transforming elder home care
+              accountability across India.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-4">
@@ -73,7 +73,7 @@ export function Hero() {
             <div className="mt-10 flex items-center gap-6 text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-teal" />
-                NDIS Compliant
+                Ayushman Bharat Ready
               </div>
               <div className="flex items-center gap-1.5">
                 <Eye className="w-4 h-4 text-teal" />
@@ -129,7 +129,7 @@ export function Hero() {
                 <div>
                   <p className="text-sm font-semibold">Risk Alert</p>
                   <p className="text-xs text-muted-foreground">
-                    Margaret S. - Mobility declining
+                    Sunita Devi - Mobility declining
                   </p>
                 </div>
               </div>

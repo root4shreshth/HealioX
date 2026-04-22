@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   HeartPulse, LayoutDashboard, MapPin, MessageCircle,
-  Users, Bell, LogOut, Menu, X, Loader2,
+  Users, Bell, LogOut, Menu, X, Loader2, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,6 +27,7 @@ const NAV_BY_ROLE: Record<string, { href: string; label: string; icon: typeof La
     { href: "/caregiver", label: "Visits", icon: MapPin },
     { href: "/patient", label: "AI Check-in", icon: MessageCircle },
     { href: "/dashboard/patients", label: "Patients", icon: Users },
+    { href: "/admin", label: "Admin Portal", icon: Building2 },
   ],
 };
 
@@ -147,7 +148,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Menu className="w-5 h-5" />
             </Button>
             <h1 className="font-[var(--font-heading)] text-lg font-bold capitalize">
-              {pathname === "/dashboard" ? "Dashboard" : pathname === "/caregiver" ? "Visits" : pathname === "/patient" ? "AI Check-in" : pathname.split("/").pop() || "Dashboard"}
+              {pathname === "/dashboard" ? "Dashboard" : pathname === "/caregiver" ? "Visits" : pathname === "/patient" ? "AI Check-in" : pathname === "/admin" ? "Admin Portal" : pathname.split("/").pop() || "Dashboard"}
             </h1>
           </div>
           <div className="flex items-center gap-3">
