@@ -25,7 +25,7 @@ export default function PatientsPage() {
   );
 
   async function seedData() {
-    await fetch("/api/seed", { method: "POST" });
+    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
     window.location.reload();
   }
 

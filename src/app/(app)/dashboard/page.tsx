@@ -61,9 +61,11 @@ export default function FamilyDashboard() {
   // Baseline check-in (first ever)
   const [baselineCheckin, setBaselineCheckin] = useState<{ risk_score: number; created_at: string; domains: Record<string, { score: number }> } | null>(null);
 
-  const { alerts, refetch: refetchAlerts } = useAlerts();
-  const { visits, refetch: refetchVisits } = useVisits();
   const patientId = linkedPatient?.id;
+  // Alerts scoped to this patient only (not all patients)
+  const { alerts, refetch: refetchAlerts } = useAlerts(patientId ? [patientId] : undefined);
+  // Visits for the whole week so the calendar tab works
+  const { visits, refetch: refetchVisits } = useVisits({ patientId: patientId || null, weekView: true });
   const { checkins } = useHealthCheckins(patientId || undefined);
 
   // Week days for calendar
@@ -149,7 +151,10 @@ export default function FamilyDashboard() {
   // Latest check-in for comparison
   const latestCheckin = checkins[0] || null;
 
-  async function seedData() { await fetch("/api/seed", { method: "POST" }); window.location.reload(); }
+  async function seedData() {
+    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
+    window.location.reload();
+  }
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand" /></div>;
 

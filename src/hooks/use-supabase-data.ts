@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-// ── Types ──
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 export type Patient = {
   id: string;
   full_name: string;
@@ -13,9 +14,10 @@ export type Patient = {
   risk_level: "low" | "moderate" | "high" | "emergency";
   risk_score: number;
   primary_conditions: string[];
-  ndis_number: string;
+  national_health_id: string;   // renamed from ndis_number
   emergency_contact_name: string;
   emergency_contact_phone: string;
+  org_id?: string;
 };
 
 export type Alert = {
@@ -33,6 +35,7 @@ export type Alert = {
 export type Visit = {
   id: string;
   patient_id: string;
+  caregiver_id: string | null;
   patient_name: string;
   patient_address: string;
   scheduled_start: string;
@@ -58,7 +61,7 @@ export type HealthCheckin = {
   created_at: string;
 };
 
-// ── Hooks ──
+// ── Hooks ──────────────────────────────────────────────────────────────────────
 
 export function usePatients() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -74,13 +77,7 @@ export function usePatients() {
         .eq("is_active", true)
         .order("risk_score", { ascending: true });
 
-      if (error) {
-        console.error("Patients fetch error:", error);
-        setNeedsSeed(true);
-        return;
-      }
-
-      if (!data || data.length === 0) {
+      if (error || !data || data.length === 0) {
         setNeedsSeed(true);
         return;
       }
@@ -95,9 +92,11 @@ export function usePatients() {
           risk_level: p.risk_level,
           risk_score: Number(p.risk_score) || 0,
           primary_conditions: p.primary_conditions || [],
-          ndis_number: p.ndis_number || "",
+          // Support both old column name (ndis_number) and new (national_health_id)
+          national_health_id: p.national_health_id || p.ndis_number || "",
           emergency_contact_name: p.emergency_contact_name || "",
           emergency_contact_phone: p.emergency_contact_phone || "",
+          org_id: p.organization_id || p.org_id || null,
         }))
       );
       setNeedsSeed(false);
@@ -113,23 +112,29 @@ export function usePatients() {
   return { patients, loading, needsSeed, refetch: fetchPatients };
 }
 
-export function useAlerts() {
+// ── Alerts: scoped to patientIds when provided ─────────────────────────────────
+
+export function useAlerts(patientIds?: string[]) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAlerts = useCallback(async () => {
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
+
+      let query = supabase
         .from("alerts")
         .select("*, patients(full_name)")
         .eq("status", "active")
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Alerts fetch error:", error);
-        return;
+      // Scope to specific patients if provided (e.g. family portal shows only linked patient alerts)
+      if (patientIds && patientIds.length > 0) {
+        query = query.in("patient_id", patientIds);
       }
+
+      const { data, error } = await query;
+      if (error) { console.error("Alerts fetch error:", error); return; }
 
       setAlerts(
         (data || []).map((a: Record<string, unknown>) => ({
@@ -149,32 +154,71 @@ export function useAlerts() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [patientIds]);
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
   return { alerts, loading, refetch: fetchAlerts };
 }
 
-export function useVisits() {
+// ── Visits: scoped to date range + optional caregiver ─────────────────────────
+
+type UseVisitsOptions = {
+  /** ISO date string YYYY-MM-DD. Defaults to today. */
+  date?: string;
+  /** Fetch the whole week containing `date` instead of a single day */
+  weekView?: boolean;
+  /** Filter to a specific caregiver (by their profile.id). Admin/family leave undefined. */
+  caregiverId?: string | null;
+  /** Filter to a specific patient */
+  patientId?: string | null;
+};
+
+export function useVisits(opts: UseVisitsOptions = {}) {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchVisits = useCallback(async () => {
     try {
       const supabase = createClient();
-      const today = new Date().toISOString().split("T")[0];
-      const { data, error } = await supabase
+
+      const baseDate = opts.date ? new Date(opts.date) : new Date();
+      let from: string;
+      let to: string;
+
+      if (opts.weekView) {
+        // Monday–Sunday of the week containing baseDate
+        const day = baseDate.getDay(); // 0=Sun
+        const monday = new Date(baseDate);
+        monday.setDate(baseDate.getDate() - ((day + 6) % 7));
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        from = `${monday.toISOString().split("T")[0]}T00:00:00`;
+        to   = `${sunday.toISOString().split("T")[0]}T23:59:59`;
+      } else {
+        const d = baseDate.toISOString().split("T")[0];
+        from = `${d}T00:00:00`;
+        to   = `${d}T23:59:59`;
+      }
+
+      let query = supabase
         .from("visits")
         .select("*, patients(full_name, address)")
-        .gte("scheduled_start", `${today}T00:00:00`)
-        .lte("scheduled_start", `${today}T23:59:59`)
+        .gte("scheduled_start", from)
+        .lte("scheduled_start", to)
         .order("scheduled_start");
 
-      if (error) {
-        console.error("Visits fetch error:", error);
-        return;
+      // Scope to logged-in caregiver's visits only
+      if (opts.caregiverId) {
+        query = query.eq("caregiver_id", opts.caregiverId);
       }
+      // Scope to a single patient (family portal)
+      if (opts.patientId) {
+        query = query.eq("patient_id", opts.patientId);
+      }
+
+      const { data, error } = await query;
+      if (error) { console.error("Visits fetch error:", error); return; }
 
       setVisits(
         (data || []).map((v: Record<string, unknown>) => {
@@ -182,6 +226,7 @@ export function useVisits() {
           return {
             id: v.id as string,
             patient_id: v.patient_id as string,
+            caregiver_id: (v.caregiver_id as string) || null,
             patient_name: (patient?.full_name as string) || "Unknown",
             patient_address: (patient?.address as string) || "",
             scheduled_start: v.scheduled_start as string,
@@ -201,79 +246,81 @@ export function useVisits() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [opts.caregiverId, opts.patientId, opts.date, opts.weekView]);
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
 
   return { visits, setVisits, loading, refetch: fetchVisits };
 }
 
+// ── Health Check-ins ───────────────────────────────────────────────────────────
+
 export function useHealthCheckins(patientId?: string) {
   const [checkins, setCheckins] = useState<HealthCheckin[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetch() {
-      try {
-        const supabase = createClient();
-        let query = supabase
-          .from("health_checkins")
-          .select("*")
-          .eq("completed", true)
-          .order("created_at", { ascending: false })
-          .limit(30);
+  const fetchCheckins = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      let query = supabase
+        .from("health_checkins")
+        .select("*")
+        .eq("completed", true)
+        .order("created_at", { ascending: false })
+        .limit(30);
 
-        if (patientId) {
-          query = query.eq("patient_id", patientId);
-        }
+      if (patientId) query = query.eq("patient_id", patientId);
 
-        const { data, error } = await query;
+      const { data, error } = await query;
+      if (error) { console.error("Checkins fetch error:", error); return; }
 
-        if (error) {
-          console.error("Checkins fetch error:", error);
-          return;
-        }
-
-        setCheckins(
-          (data || []).map((c) => ({
-            id: c.id,
-            patient_id: c.patient_id,
-            risk_score: c.risk_score ? Number(c.risk_score) : null,
-            risk_level: c.risk_level,
-            domains: c.domains || {},
-            ai_summary: c.ai_summary,
-            flags: c.flags || [],
-            completed: c.completed,
-            created_at: c.created_at,
-          }))
-        );
-      } catch {
-        console.error("Checkins fetch failed");
-      } finally {
-        setLoading(false);
-      }
+      setCheckins(
+        (data || []).map((c) => ({
+          id: c.id,
+          patient_id: c.patient_id,
+          risk_score: c.risk_score ? Number(c.risk_score) : null,
+          risk_level: c.risk_level,
+          domains: c.domains || {},
+          ai_summary: c.ai_summary,
+          flags: c.flags || [],
+          completed: c.completed,
+          created_at: c.created_at,
+        }))
+      );
+    } catch {
+      console.error("Checkins fetch failed");
+    } finally {
+      setLoading(false);
     }
-    fetch();
   }, [patientId]);
 
-  return { checkins, loading };
+  useEffect(() => { fetchCheckins(); }, [fetchCheckins]);
+
+  return { checkins, loading, refetch: fetchCheckins };
 }
 
-// Real-time subscription
-export function useRealtimeRefresh(tables: string[], callback: () => void) {
+// ── Realtime: org-scoped subscriptions ────────────────────────────────────────
+
+export function useRealtimeRefresh(
+  tables: string[],
+  callback: () => void,
+  orgId?: string   // scope subscriptions to this org — prevents cross-tenant triggers
+) {
   useEffect(() => {
     const supabase = createClient();
-    const channels = tables.map((table) =>
-      supabase
-        .channel(`realtime-${table}`)
-        .on("postgres_changes", { event: "*", schema: "public", table }, () => {
-          callback();
-        })
-        .subscribe()
-    );
+    const channels = tables.map((table) => {
+      const channel = supabase.channel(`rt-${table}-${orgId || "global"}`);
 
-    return () => {
-      channels.forEach((ch) => supabase.removeChannel(ch));
-    };
-  }, [tables, callback]);
+      // If we have an orgId, apply a filter so we only receive changes for our org
+      const changeOpts = orgId
+        ? { event: "*" as const, schema: "public", table, filter: `org_id=eq.${orgId}` }
+        : { event: "*" as const, schema: "public", table };
+
+      return channel
+        .on("postgres_changes", changeOpts, () => callback())
+        .subscribe();
+    });
+
+    return () => { channels.forEach((ch) => supabase.removeChannel(ch)); };
+  }, [tables, callback, orgId]);
 }

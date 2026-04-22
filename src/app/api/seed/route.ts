@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rejectInProduction } from "@/lib/api/with-auth";
 
-// Seeds demo data into Supabase — called once on first setup
-export async function POST() {
+// Seeds demo data into Supabase — development/staging only.
+// Blocked in production by rejectInProduction() guard.
+export async function POST(req: NextRequest) {
+  // Hard-block in production
+  const blocked = rejectInProduction();
+  if (blocked) return blocked;
+
+  // Require a secret token even in dev/staging so it can't be called accidentally
+  const token = req.headers.get("x-seed-token");
+  if (token !== (process.env.SEED_SECRET || "healiox-dev-seed")) {
+    return NextResponse.json({ error: "Forbidden: invalid seed token" }, { status: 403 });
+  }
+
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

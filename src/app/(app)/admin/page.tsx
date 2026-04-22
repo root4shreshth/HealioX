@@ -170,7 +170,10 @@ export default function AdminPortal() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  async function seedData() { await fetch("/api/seed", { method: "POST" }); loadData(); }
+  async function seedData() {
+    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
+    loadData();
+  }
 
   function exportCSV() {
     const rows = [

@@ -148,7 +148,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Menu className="w-5 h-5" />
             </Button>
             <h1 className="font-[var(--font-heading)] text-lg font-bold capitalize">
-              {pathname === "/dashboard" ? "Dashboard" : pathname === "/caregiver" ? "Visits" : pathname === "/patient" ? "AI Check-in" : pathname === "/admin" ? "Admin Portal" : pathname.split("/").pop() || "Dashboard"}
+              {pathname === "/dashboard" ? "Dashboard"
+            : pathname === "/caregiver" ? "My Visits"
+            : pathname === "/patient" ? "AI Check-in"
+            : pathname === "/admin" ? "Admin Portal"
+            : pathname.startsWith("/dashboard/patients") ? "Patients"
+            : pathname.split("/").pop() || "Dashboard"}
             </h1>
           </div>
           <div className="flex items-center gap-3">

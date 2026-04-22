@@ -16,6 +16,7 @@ import { useVisits, useRealtimeRefresh } from "@/hooks/use-supabase-data";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
 
 const SERVICE_TYPES = [
   { label: "Personal Care", icon: "🧼" }, { label: "Medication Assistance", icon: "💊" },
@@ -51,7 +52,9 @@ const riskColor: Record<string, string> = {
 
 export default function CaregiverPortal() {
   const router = useRouter();
-  const { visits, setVisits, loading, refetch } = useVisits();
+  const { user } = useAuth();
+  // Filter visits to this caregiver's assignments only
+  const { visits, setVisits, loading, refetch } = useVisits({ caregiverId: user?.id ?? null });
   const [activeVisit, setActiveVisit] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -177,7 +180,10 @@ export default function CaregiverPortal() {
     setShowSuccess(true);
   }
 
-  async function seedData() { await fetch("/api/seed", { method: "POST" }); refetch(); }
+  async function seedData() {
+    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
+    refetch();
+  }
 
   function formatTime(s: number) {
     return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
