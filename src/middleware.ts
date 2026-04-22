@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PROTECTED   = ["/dashboard", "/caregiver", "/patient", "/admin"];
-const AUTH_ROUTES = ["/login", "/register"];
+const AUTH_ROUTES = ["/login", "/register", "/provider-signup"];
 
 const ROLE_ROUTES: Record<string, string[]> = {
   caregiver:      ["/caregiver", "/patient/checkin"],

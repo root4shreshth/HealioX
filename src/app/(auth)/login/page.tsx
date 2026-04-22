@@ -296,8 +296,22 @@ export default function LoginPage() {
         </div>
       </div>
 
+      {/* Provider sign-up CTA */}
+      <div className="mt-6 p-4 rounded-xl border-2 border-dashed border-brand/30 bg-brand/5 text-center">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <Building2 className="w-4 h-4 text-brand" />
+          <span className="text-sm font-semibold">Running a care agency or hospital?</span>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Create an organization account and manage your entire operation.</p>
+        <Link href="/provider-signup">
+          <Button variant="outline" size="sm" className="border-brand text-brand hover:bg-brand hover:text-white rounded-full text-xs">
+            Start Provider Signup <ArrowRight className="w-3 h-3 ml-1.5" />
+          </Button>
+        </Link>
+      </div>
+
       <p className="mt-6 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
+        Individual account?{" "}
         <Link href="/register" className="text-brand font-semibold hover:underline">Create one</Link>
       </p>
     </div>

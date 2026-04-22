@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   HeartPulse, LayoutDashboard, MapPin, MessageCircle,
   Users, Bell, LogOut, Menu, X, Loader2, Building2,
+  UserCog, CalendarDays, AlertCircle, Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -23,11 +24,12 @@ const NAV_BY_ROLE: Record<string, { href: string; label: string; icon: typeof La
     { href: "/dashboard", label: "Care Dashboard", icon: LayoutDashboard },
   ],
   provider_admin: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/caregiver", label: "Visits", icon: MapPin },
-    { href: "/patient", label: "AI Check-in", icon: MessageCircle },
-    { href: "/dashboard/patients", label: "Patients", icon: Users },
-    { href: "/admin", label: "Admin Portal", icon: Building2 },
+    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/admin/caregivers", label: "Caregivers", icon: UserCog },
+    { href: "/admin/patients", label: "Patients", icon: Users },
+    { href: "/admin/schedule", label: "Schedule", icon: CalendarDays },
+    { href: "/admin/alerts", label: "Alerts", icon: AlertCircle },
+    { href: "/admin/settings", label: "Settings", icon: Settings2 },
   ],
 };
 
@@ -151,7 +153,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {pathname === "/dashboard" ? "Dashboard"
             : pathname === "/caregiver" ? "My Visits"
             : pathname === "/patient" ? "AI Check-in"
-            : pathname === "/admin" ? "Admin Portal"
+            : pathname === "/admin" ? "Admin Dashboard"
+            : pathname === "/admin/caregivers" ? "Caregivers"
+            : pathname === "/admin/patients" ? "Patients"
+            : pathname === "/admin/schedule" ? "Schedule"
+            : pathname === "/admin/alerts" ? "Alerts"
+            : pathname === "/admin/settings" ? "Organization Settings"
             : pathname.startsWith("/dashboard/patients") ? "Patients"
             : pathname.split("/").pop() || "Dashboard"}
             </h1>

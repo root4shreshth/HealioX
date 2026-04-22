@@ -55,12 +55,12 @@ export function Navbar() {
                 Login
               </Button>
             </Link>
-            <Link href="/register">
+            <Link href="/provider-signup">
               <Button
                 size="sm"
                 className="bg-brand hover:bg-brand-dark text-white text-sm rounded-full px-5"
               >
-                Get Started
+                Start Free Trial
               </Button>
             </Link>
           </div>
