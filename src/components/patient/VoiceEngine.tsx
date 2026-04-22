@@ -15,6 +15,7 @@ type SpeechRecognitionAny = any;
 export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: VoiceEngineProps) {
   const recognitionRef = useRef<SpeechRecognitionAny | null>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const finalBufferRef = useRef<string>(""); // accumulate full sentence here
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -25,7 +26,6 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
     setIsSupported(!!SR && !!window.speechSynthesis);
   }, []);
 
-  // Start/stop recognition
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -35,27 +35,41 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
       const recognition = new SR();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = "en-AU";
+      recognition.lang = "en-IN"; // India locale
+
+      // Reset buffer on each new listening session
+      finalBufferRef.current = "";
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
         let interim = "";
-        let final = "";
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            final += transcript;
+            // Accumulate final words into buffer — don't fire yet
+            finalBufferRef.current += (finalBufferRef.current ? " " : "") + transcript.trim();
           } else {
             interim += transcript;
           }
         }
 
-        setInterimTranscript(interim);
+        // Show interim in UI but do NOT send it
+        setInterimTranscript(interim || finalBufferRef.current);
+      };
 
-        if (final) {
-          onTranscript(final.trim(), true);
+      // Only fire the transcript callback when the user fully stops speaking
+      recognition.onend = () => {
+        const fullSentence = finalBufferRef.current.trim();
+        if (fullSentence) {
+          onTranscript(fullSentence, true);
+          finalBufferRef.current = "";
           setInterimTranscript("");
+        }
+
+        // Restart if still listening
+        if (isListening && recognitionRef.current) {
+          try { recognitionRef.current.start(); } catch { /* already started */ }
         }
       };
 
@@ -63,12 +77,6 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
       recognition.onerror = (event: any) => {
         if (event.error !== "no-speech" && event.error !== "aborted") {
           console.error("Speech recognition error:", event.error);
-        }
-      };
-
-      recognition.onend = () => {
-        if (isListening && recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch { /* already started */ }
         }
       };
 
@@ -81,6 +89,8 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
         try { recognitionRef.current.stop(); } catch { /* already stopped */ }
         recognitionRef.current = null;
       }
+      finalBufferRef.current = "";
+      setInterimTranscript("");
     };
   }, [isListening, onTranscript]);
 
@@ -88,20 +98,17 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
   const speak = useCallback(
     (text: string) => {
       if (!speakEnabled || !window.speechSynthesis) return;
-
-      // Cancel any ongoing speech
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.85; // Slightly slower for elderly users
+      utterance.rate = 0.85;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
-      utterance.lang = "en-AU";
+      utterance.lang = "en-IN";
 
-      // Try to find an Australian or friendly English voice
       const voices = window.speechSynthesis.getVoices();
       const preferred = voices.find(
-        (v) => v.lang.includes("en-AU") || v.lang.includes("en-GB")
+        (v) => v.lang.includes("en-IN") || v.lang.includes("en-GB") || v.lang.includes("en-US")
       );
       if (preferred) utterance.voice = preferred;
 
@@ -120,12 +127,5 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
     setIsSpeaking(false);
   }, []);
 
-  return {
-    isSupported,
-    isSpeaking,
-    interimTranscript,
-    speak,
-    stopSpeaking,
-  };
+  return { isSupported, isSpeaking, interimTranscript, speak, stopSpeaking };
 }
-

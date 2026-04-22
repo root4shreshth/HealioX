@@ -81,14 +81,8 @@ export default function FamilyDashboard() {
               return { ...pt, primary_conditions: pt.primary_conditions || [] };
             }));
           } else {
-            // Fallback: show first patient
-            const { data: pts } = await supabase.from("patients").select("*").limit(4);
-            if (pts && pts.length > 0) {
-              setLinkedPatient({ ...pts[0], primary_conditions: pts[0].primary_conditions || [] });
-              setAllPatients(pts.map((p) => ({ ...p, primary_conditions: p.primary_conditions || [] })));
-            } else {
-              setNeedsSeed(true);
-            }
+            // No linked patient — show empty state, do NOT show random patients
+            setNeedsSeed(true);
           }
         }
 
@@ -145,12 +139,18 @@ export default function FamilyDashboard() {
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand" /></div>;
 
-  if (needsSeed || !linkedPatient) {
+  if (!linkedPatient) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Database className="w-12 h-12 text-muted-foreground mb-4" />
-        <h3 className="font-[var(--font-heading)] text-xl font-bold">No Patient Data Yet</h3>
-        <p className="text-sm text-muted-foreground mt-2 max-w-md">Seed demo data to see the dashboard with a linked patient, visit history, health check-ins, and daily updates.</p>
+        <h3 className="font-[var(--font-heading)] text-xl font-bold">
+          {userRole === "provider_admin" ? "No Patient Data Yet" : "No Family Member Linked Yet"}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-2 max-w-md">
+          {userRole === "provider_admin"
+            ? "Seed demo data to see the dashboard with patients, visit history, and health check-ins."
+            : "Your account hasn't been linked to a patient yet. Please seed demo data or contact your care provider."}
+        </p>
         <Button onClick={seedData} className="mt-6 bg-brand hover:bg-brand-dark text-white rounded-full px-6"><Database className="w-4 h-4 mr-2" />Seed Demo Data</Button>
       </div>
     );
@@ -209,7 +209,7 @@ export default function FamilyDashboard() {
               {dailyUpdates.slice(0, 5).map((update) => (
                 <div key={update.id} className="p-3 rounded-xl bg-muted/30 border border-border">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold">{new Date(update.created_at).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}</span>
+                    <span className="text-xs font-semibold">{new Date(update.created_at).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</span>
                     <div className="flex items-center gap-2">
                       {update.mood_observation && (
                         <Badge variant="secondary" className="text-[9px]">{update.mood_observation}</Badge>
@@ -248,7 +248,7 @@ export default function FamilyDashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={trendData}>
                     <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#EA580C" stopOpacity={0.15} /><stop offset="95%" stopColor="#EA580C" stopOpacity={0} /></linearGradient></defs>
-                    <XAxis dataKey="date" tick={{ fontSize: 9 }} tickFormatter={(d) => new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short" })} />
+                    <XAxis dataKey="date" tick={{ fontSize: 9 }} tickFormatter={(d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} />
                     <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
                     <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                     <Area type="monotone" dataKey="score" stroke="#EA580C" strokeWidth={2} fill="url(#g1)" />
@@ -296,7 +296,7 @@ export default function FamilyDashboard() {
                   <div key={v.id} className={`flex items-center gap-3 p-2.5 rounded-lg border ${v.status === "completed" ? "border-green-200 bg-green-50/30" : "border-border"}`}>
                     {v.status === "completed" ? <MapPinCheck className="w-4 h-4 text-green-500 shrink-0" /> : <Clock className="w-4 h-4 text-muted-foreground/40 shrink-0" />}
                     <div className="flex-1">
-                      <span className="text-xs font-semibold">{new Date(v.scheduled_start).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}</span>
+                      <span className="text-xs font-semibold">{new Date(v.scheduled_start).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>
                       {v.status === "completed" && <span className="text-[10px] text-muted-foreground ml-2">{v.duration_minutes}min &middot; {v.services.length} services &middot; GPS {v.gps_verified ? "verified" : "?"}</span>}
                     </div>
                     <Badge className={`text-[9px] ${v.status === "completed" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
@@ -317,7 +317,7 @@ export default function FamilyDashboard() {
               <div className="bg-white rounded-xl p-3 border"><div className="text-xl font-[var(--font-heading)] font-black">{funding.totalVerifiedHours}h</div><div className="text-[10px] text-muted-foreground">Verified Hours</div></div>
               <div className="bg-white rounded-xl p-3 border"><div className="text-xl font-[var(--font-heading)] font-black">{funding.totalServicesDelivered}</div><div className="text-[10px] text-muted-foreground">Services Delivered</div></div>
               <div className="bg-white rounded-xl p-3 border"><div className="text-xl font-[var(--font-heading)] font-black">{funding.verificationRate}%</div><div className="text-[10px] text-muted-foreground">GPS Verified</div></div>
-              <div className="bg-white rounded-xl p-3 border"><div className="text-xl font-[var(--font-heading)] font-black text-green-600">${funding.estimatedSavings.toLocaleString()}</div><div className="text-[10px] text-muted-foreground">Est. Savings</div></div>
+              <div className="bg-white rounded-xl p-3 border"><div className="text-xl font-[var(--font-heading)] font-black text-green-600">₹{funding.estimatedSavings.toLocaleString("en-IN")}</div><div className="text-[10px] text-muted-foreground">Est. Savings</div></div>
             </div>
           </CardContent>
         </Card>

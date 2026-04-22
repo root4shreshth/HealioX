@@ -48,12 +48,14 @@ export default function CheckinPage() {
     callAI("");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Voice fills the input field — user must press Send or Enter to submit
+  // This prevents individual words from being sent as separate messages
   const handleTranscript = useCallback((text: string, isFinal: boolean) => {
-    if (isFinal && text.trim() && !isTyping) {
+    if (isFinal && text.trim()) {
       setInput(text.trim());
-      setTimeout(() => sendMessage(text.trim()), 300);
+      // Do NOT auto-send — user confirms by pressing Send button or Enter
     }
-  }, [isTyping]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const { isSpeaking, interimTranscript, speak, stopSpeaking, isSupported } = useVoiceEngine({
     onTranscript: handleTranscript,
@@ -108,7 +110,7 @@ export default function CheckinPage() {
           conversation: getHistory(),
           patientName: onboardName || searchParams.get("name"),
           dateOfBirth: searchParams.get("dob") || "1950-01-01",
-          address: searchParams.get("address") ? decodeURIComponent(searchParams.get("address")!) : "Perth, WA",
+          address: searchParams.get("address") ? decodeURIComponent(searchParams.get("address")!) : "Delhi, India",
           phone: searchParams.get("phone"),
           emergencyContactName: searchParams.get("emergName") ? decodeURIComponent(searchParams.get("emergName")!) : null,
           emergencyContactPhone: searchParams.get("emergPhone"),
