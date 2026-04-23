@@ -36,6 +36,13 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
   const isSpeakingRef = useRef(false);
   const shouldListenRef = useRef(false);
 
+  // Keep onTranscript in a ref so recognition callbacks always see the LATEST
+  // closure from the parent component. Without this, the engine captures the
+  // onTranscript from the first render and every subsequent voice turn uses
+  // stale `messages` state — causing the AI to think every turn is fresh.
+  const onTranscriptRef = useRef(onTranscript);
+  useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
+
   const clearSilenceTimer = () => {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
@@ -109,7 +116,8 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
       const fullSentence = finalBufferRef.current.trim();
       // Only fire if we actually captured something AND AI isn't speaking
       if (fullSentence && !isSpeakingRef.current) {
-        onTranscript(fullSentence, true);
+        // Call via ref so we always use the parent's latest closure
+        onTranscriptRef.current(fullSentence, true);
         finalBufferRef.current = "";
         setInterimTranscript("");
       }
@@ -133,7 +141,7 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
 
     recognitionRef.current = recognition;
     try { recognition.start(); } catch { /* already started */ }
-  }, [onTranscript]);
+  }, []);
 
   const stopRecognition = useCallback(() => {
     clearSilenceTimer();

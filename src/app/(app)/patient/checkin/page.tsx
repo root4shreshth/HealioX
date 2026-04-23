@@ -31,7 +31,7 @@ export default function CheckinPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [riskResult, setRiskResult] = useState<RiskResult | null>(null);
-  const [assessedCount, setAssessedCount] = useState(0);
+  const [assessedDomains, setAssessedDomains] = useState<string[]>([]);
   const [voiceActive, setVoiceActive] = useState(true);
   const [speakEnabled, setSpeakEnabled] = useState(true);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -39,69 +39,85 @@ export default function CheckinPage() {
   const [newPatientId, setNewPatientId] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ── Refs for the latest state (used inside stable callbacks that would
+  //    otherwise close over stale values). This is THE fix for the bug
+  //    where the AI kept "forgetting" previous turns when voice auto-
+  //    submitted — handleTranscript was a useCallback([]) closure that
+  //    held the initial empty messages array forever.
+  const messagesRef = useRef<Message[]>([]);
+  const assessedDomainsRef = useRef<string[]>([]);
+  const isTypingRef = useRef(false);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { assessedDomainsRef.current = assessedDomains; }, [assessedDomains]);
+  useEffect(() => { isTypingRef.current = isTyping; }, [isTyping]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isTyping]);
 
-  // Start AI greeting on mount
-  useEffect(() => {
-    callAI("");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Voice auto-submits after the user stops speaking for ~1.5s.
-  // The VoiceEngine's silence detector ensures this only fires with a
-  // complete sentence, not per-word. We also guard against submitting
-  // while the AI is still typing its previous response.
-  const isTypingRef = useRef(false);
-  useEffect(() => { isTypingRef.current = isTyping; }, [isTyping]);
-
-  const handleTranscript = useCallback((text: string, isFinal: boolean) => {
-    const clean = text.trim();
-    if (!isFinal || !clean) return;
-    if (isTypingRef.current) {
-      // AI is still generating — just fill input, don't clobber conversation
-      setInput(clean);
-      return;
-    }
-    // Auto-send the completed utterance
-    setInput("");
-    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: clean, timestamp: new Date() }]);
-    callAI(clean);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { isSpeaking, interimTranscript, speak, stopSpeaking, isSupported } = useVoiceEngine({
-    onTranscript: handleTranscript,
-    isListening: voiceActive && !isComplete,
-    speakEnabled,
-  });
-
-  function getHistory() {
-    return messages.map((m) => ({
-      role: m.role === "ai" ? "assistant" : "user",
+  // ── History/context builders — always read from refs (latest state) ─────
+  const buildHistory = useCallback(() => {
+    return messagesRef.current.map((m) => ({
+      role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
       content: m.imageUrl ? `${m.content}\n[IMAGE: Patient shared a photo]` : m.content,
     }));
-  }
+  }, []);
 
-  async function callAI(userMessage: string) {
+  const buildContext = useCallback(() => {
+    const assessed = assessedDomainsRef.current;
+    const allDomains = ["mood", "pain", "mobility", "medication", "sleep", "appetite", "cognition"];
+    const remaining = allDomains.filter((d) => !assessed.includes(d));
+
+    if (isOnboarding) {
+      return `New patient onboarding for ${onboardName || "a new patient"}. They are describing their health issues for the first time. Ask about their main health concerns, daily challenges, what kind of help they need, and how they are feeling. Be warm and welcoming. This is their FIRST interaction with the platform.`;
+    }
+
+    return `Follow-up health check-in for ${patientName || "patient"}.
+
+DOMAINS ALREADY COVERED in this conversation: ${assessed.length > 0 ? assessed.join(", ") : "none yet"}
+DOMAINS STILL TO COVER: ${remaining.length > 0 ? remaining.join(", ") : "all covered — prepare to wrap up"}
+
+CRITICAL RULES:
+- DO NOT repeat a question about a domain already covered. Remember what the patient has already told you.
+- Build on what they JUST said in their last message — acknowledge it specifically before asking the next question.
+- If they said "I cannot show" or declined something, respect it and move on gracefully to the next domain.
+- When all 7 domains are covered, set isComplete: true and give a warm closing.
+- NEVER greet them again ("Namaste, how are you today") unless this is the very first turn.`;
+  }, [isOnboarding, onboardName, patientName]);
+
+  // ── Core AI call — reads latest state via refs ──────────────────────────
+  const callAI = useCallback(async (userMessage: string) => {
     setIsTyping(true);
     try {
-      const context = isOnboarding
-        ? `New patient onboarding for ${onboardName || "a new patient"}. They are describing their health issues for the first time. Ask about their main health concerns, daily challenges, what kind of help they need, and how they're feeling. Be warm and welcoming. This is their FIRST interaction with the platform.`
-        : `Follow-up health check-in for ${patientName || "patient"}. Assess their current health across 7 domains.`;
-
       const res = await fetch("/api/ai/health-checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ message: userMessage, conversationHistory: getHistory(), patientContext: context }),
+        body: JSON.stringify({
+          message: userMessage,
+          conversationHistory: buildHistory(),
+          patientContext: buildContext(),
+        }),
       });
       const data = await res.json();
       const aiText = data.message || data.content || "Could you tell me more?";
 
       setMessages((prev) => [...prev, { id: `ai-${Date.now()}`, role: "ai", content: aiText, timestamp: new Date() }]);
       if (speakEnabled) speak(aiText);
-      if (data.assessedDomains) setAssessedCount(data.assessedDomains.length);
-      else setAssessedCount((prev) => Math.min(prev + 1, 7));
+
+      // ── ACCUMULATE assessed domains across turns (don't overwrite!) ─────
+      if (Array.isArray(data.assessedDomains) && data.assessedDomains.length > 0) {
+        setAssessedDomains((prev) => {
+          const merged = new Set([...prev, ...data.assessedDomains]);
+          return Array.from(merged);
+        });
+      } else if (data.currentDomain) {
+        // Fallback: use currentDomain
+        setAssessedDomains((prev) => {
+          if (prev.includes(data.currentDomain)) return prev;
+          return [...prev, data.currentDomain];
+        });
+      }
 
       if (data.isComplete) {
         if (isOnboarding) await completeOnboarding();
@@ -110,8 +126,38 @@ export default function CheckinPage() {
     } catch (e) {
       console.error(e);
       setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: "ai", content: "Sorry, could you try again?", timestamp: new Date() }]);
-    } finally { setIsTyping(false); }
-  }
+    } finally {
+      setIsTyping(false);
+    }
+  // speak is stable from the voice engine (useCallback); other deps pulled via refs/stable fns
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildHistory, buildContext, speakEnabled, isOnboarding]);
+
+  // Start AI greeting on mount
+  useEffect(() => {
+    callAI("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Voice auto-submit handler — uses messagesRef so it always has fresh history
+  const handleTranscript = useCallback((text: string, isFinal: boolean) => {
+    const clean = text.trim();
+    if (!isFinal || !clean) return;
+    if (isTypingRef.current) {
+      setInput(clean);
+      return;
+    }
+    setInput("");
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: clean, timestamp: new Date() }]);
+    // Small delay so the state update flushes into messagesRef before the API call reads it
+    setTimeout(() => callAI(clean), 0);
+  }, [callAI]);
+
+  const { isSpeaking, interimTranscript, speak, stopSpeaking, isSupported } = useVoiceEngine({
+    onTranscript: handleTranscript,
+    isListening: voiceActive && !isComplete,
+    speakEnabled,
+  });
 
   async function completeOnboarding() {
     setIsTyping(true);
@@ -121,7 +167,7 @@ export default function CheckinPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          conversation: getHistory(),
+          conversation: buildHistory(),
           patientName: onboardName || searchParams.get("name"),
           dateOfBirth: searchParams.get("dob") || "1950-01-01",
           address: searchParams.get("address") ? decodeURIComponent(searchParams.get("address")!) : "Delhi, India",
@@ -151,7 +197,7 @@ export default function CheckinPage() {
       }
     } catch (e) { console.error(e); }
     setIsComplete(true);
-    setAssessedCount(7);
+    setAssessedDomains(["mood", "pain", "mobility", "medication", "sleep", "appetite", "cognition"]);
     setVoiceActive(false);
     setIsTyping(false);
   }
@@ -162,7 +208,7 @@ export default function CheckinPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ conversation: getHistory() }),
+        body: JSON.stringify({ conversation: buildHistory() }),
       });
       const data = await res.json();
       if (!data.error) {
@@ -173,14 +219,14 @@ export default function CheckinPage() {
           const supabase = createClient();
           const pid = patientId || newPatientId;
           if (pid) {
-            await supabase.from("health_checkins").insert({ patient_id: pid, conversation: getHistory(), risk_score: result.score, risk_level: result.level, confidence: data.confidence || 0.8, domains: result.domains, ai_summary: result.summary, flags: result.flags, completed: true, completed_at: new Date().toISOString() });
+            await supabase.from("health_checkins").insert({ patient_id: pid, conversation: buildHistory(), risk_score: result.score, risk_level: result.level, confidence: data.confidence || 0.8, domains: result.domains, ai_summary: result.summary, flags: result.flags, completed: true, completed_at: new Date().toISOString() });
             await supabase.from("patients").update({ risk_score: result.score, risk_level: result.level }).eq("id", pid);
           }
         } catch (e) { console.error("DB:", e); }
       }
     } catch { setRiskResult({ score: 65, level: "moderate", domains: {}, summary: "Assessment complete.", flags: [] }); }
     setIsComplete(true);
-    setAssessedCount(7);
+    setAssessedDomains(["mood", "pain", "mobility", "medication", "sleep", "appetite", "cognition"]);
     setVoiceActive(false);
     const msg = "Your check-in is complete! Results shared with your care team.";
     setMessages((prev) => [...prev, { id: `done-${Date.now()}`, role: "ai", content: msg, timestamp: new Date() }]);
@@ -192,7 +238,8 @@ export default function CheckinPage() {
     if (!msg || isTyping) return;
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: msg, timestamp: new Date() }]);
     setInput("");
-    callAI(msg);
+    // Delay so messagesRef picks up the new message before callAI reads it
+    setTimeout(() => callAI(msg), 0);
   }
 
   async function handleImageCapture(base64: string) {
@@ -218,6 +265,7 @@ export default function CheckinPage() {
   }
 
   const riskColors: Record<string, string> = { low: "bg-green-100 text-green-700 border-green-200", moderate: "bg-amber-100 text-amber-700 border-amber-200", high: "bg-red-100 text-red-700 border-red-200", emergency: "bg-red-600 text-white border-red-700" };
+  const assessedCount = assessedDomains.length;
   const progress = Math.round((assessedCount / 7) * 100);
 
   return (
