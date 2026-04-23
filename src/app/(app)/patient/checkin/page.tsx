@@ -48,14 +48,26 @@ export default function CheckinPage() {
     callAI("");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Voice fills the input field — user must press Send or Enter to submit
-  // This prevents individual words from being sent as separate messages
+  // Voice auto-submits after the user stops speaking for ~1.5s.
+  // The VoiceEngine's silence detector ensures this only fires with a
+  // complete sentence, not per-word. We also guard against submitting
+  // while the AI is still typing its previous response.
+  const isTypingRef = useRef(false);
+  useEffect(() => { isTypingRef.current = isTyping; }, [isTyping]);
+
   const handleTranscript = useCallback((text: string, isFinal: boolean) => {
-    if (isFinal && text.trim()) {
-      setInput(text.trim());
-      // Do NOT auto-send — user confirms by pressing Send button or Enter
+    const clean = text.trim();
+    if (!isFinal || !clean) return;
+    if (isTypingRef.current) {
+      // AI is still generating — just fill input, don't clobber conversation
+      setInput(clean);
+      return;
     }
-  }, []);
+    // Auto-send the completed utterance
+    setInput("");
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: clean, timestamp: new Date() }]);
+    callAI(clean);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { isSpeaking, interimTranscript, speak, stopSpeaking, isSupported } = useVoiceEngine({
     onTranscript: handleTranscript,

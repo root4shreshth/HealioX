@@ -20,10 +20,14 @@ type SpeechRecognitionAny = any;
  *    audio fully die out before we start listening again)
  *  - Final transcript only fires on `onend` (full sentence), not per-word
  */
+// How long to wait after the last speech sound before auto-submitting
+const SILENCE_TIMEOUT_MS = 1500;
+
 export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: VoiceEngineProps) {
   const recognitionRef = useRef<SpeechRecognitionAny | null>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const finalBufferRef = useRef<string>("");
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -31,6 +35,13 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
   // Ref flags synchronize TTS/ASR so the mic never captures TTS audio
   const isSpeakingRef = useRef(false);
   const shouldListenRef = useRef(false);
+
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,18 +77,35 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
       }
 
       let interim = "";
+      let gotNewSpeech = false;
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           finalBufferRef.current += (finalBufferRef.current ? " " : "") + transcript.trim();
+          gotNewSpeech = true;
         } else {
           interim += transcript;
+          if (transcript.trim()) gotNewSpeech = true;
         }
       }
       setInterimTranscript(interim || finalBufferRef.current);
+
+      // ── Silence detector ─────────────────────────────────────────────
+      // Every time we hear speech, reset the silence timer. When the user
+      // stops talking for SILENCE_TIMEOUT_MS, stop the recognition — that
+      // fires onend, which fires the transcript callback (auto-submit).
+      if (gotNewSpeech) {
+        clearSilenceTimer();
+        silenceTimerRef.current = setTimeout(() => {
+          if (finalBufferRef.current.trim() && !isSpeakingRef.current) {
+            try { recognition.stop(); } catch { /* noop */ }
+          }
+        }, SILENCE_TIMEOUT_MS);
+      }
     };
 
     recognition.onend = () => {
+      clearSilenceTimer();
       const fullSentence = finalBufferRef.current.trim();
       // Only fire if we actually captured something AND AI isn't speaking
       if (fullSentence && !isSpeakingRef.current) {
@@ -108,6 +136,7 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
   }, [onTranscript]);
 
   const stopRecognition = useCallback(() => {
+    clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* noop */ }
       recognitionRef.current = null;
