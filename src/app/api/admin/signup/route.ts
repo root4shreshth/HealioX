@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  // 3. Create profile
-  const { error: profileError } = await admin.from("profiles").upsert({
+  // 3. Create profile (with resilient fallback if migration hasn't been run)
+  const fullProfile = {
     id: authData.user.id,
     email: payload.admin_email,
     full_name: payload.admin_full_name,
@@ -117,13 +117,25 @@ export async function POST(req: NextRequest) {
     org_id: org.id,
     phone: payload.admin_phone || null,
     is_active: true,
-  });
+  };
+
+  let profileError = (await admin.from("profiles").upsert(fullProfile)).error;
+
+  if (profileError && /column .* does not exist|schema cache|Could not find/.test(profileError.message)) {
+    profileError = (await admin.from("profiles").upsert({
+      id: authData.user.id,
+      email: payload.admin_email,
+      full_name: payload.admin_full_name,
+      role: "provider_admin",
+    })).error;
+  }
 
   if (profileError) {
-    // Rollback user + org
     await admin.auth.admin.deleteUser(authData.user.id);
     await admin.from("organizations").delete().eq("id", org.id);
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    return NextResponse.json({
+      error: `${profileError.message}. Run the SQL migration at supabase/migrations/20260423_admin_portal_schema.sql first.`,
+    }, { status: 500 });
   }
 
   return NextResponse.json({

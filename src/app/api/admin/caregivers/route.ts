@@ -96,8 +96,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create profile row
-    const { error: profileError } = await admin.from("profiles").upsert({
+    // Create profile row. If extra columns (org_id, phone, is_active) are missing
+    // in the DB schema, fall back to inserting only the core columns so the app
+    // still works pre-migration.
+    const fullProfile = {
       id: created.user.id,
       email,
       full_name,
@@ -105,12 +107,25 @@ export async function POST(req: NextRequest) {
       org_id: orgId,
       phone: phone || null,
       is_active: true,
-    });
+    };
+
+    let profileError = (await admin.from("profiles").upsert(fullProfile)).error;
+
+    if (profileError && /column .* does not exist|schema cache|Could not find/.test(profileError.message)) {
+      // Missing column — retry with only core columns
+      profileError = (await admin.from("profiles").upsert({
+        id: created.user.id,
+        email,
+        full_name,
+        role: "caregiver",
+      })).error;
+    }
 
     if (profileError) {
-      // Rollback auth user if profile creation failed
       await admin.auth.admin.deleteUser(created.user.id);
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
+      return NextResponse.json({
+        error: `${profileError.message}. Run supabase/migrations/20260423_admin_portal_schema.sql in your Supabase SQL editor to add missing columns.`,
+      }, { status: 500 });
     }
 
     await logActivity({
