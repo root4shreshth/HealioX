@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { rejectInProduction } from "@/lib/api/with-auth";
 
 // Seeds demo data into Supabase — development/staging only.
@@ -15,6 +17,22 @@ export async function POST(req: NextRequest) {
   if (token !== (process.env.SEED_SECRET || "healiox-dev-seed")) {
     return NextResponse.json({ error: "Forbidden: invalid seed token" }, { status: 403 });
   }
+
+  // Resolve the caller's user ID from cookies — we'll assign visits to THEM
+  // so they show up immediately on their own /caregiver, /admin, /dashboard pages.
+  const cookieStore = await cookies();
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll() {},
+      },
+    }
+  );
+  const { data: { user: callerUser } } = await authClient.auth.getUser();
+  const callerUserId = callerUser?.id || null;
 
   try {
     const supabase = createClient(
@@ -156,7 +174,16 @@ export async function POST(req: NextRequest) {
     ];
 
     for (const patient of patients) {
-      await supabase.from("patients").upsert(patient);
+      const { error } = await supabase.from("patients").upsert(patient);
+      if (error && /column .* does not exist|schema cache|Could not find/.test(error.message)) {
+        // Strip columns that may not exist in older schemas
+        const { lat, lng, ndis_number, ...minimal } = patient;
+        void lat; void lng; void ndis_number;
+        const retry = await supabase.from("patients").upsert(minimal);
+        if (retry.error) console.error("Patient seed error:", retry.error.message);
+      } else if (error) {
+        console.error("Patient seed error:", error.message);
+      }
     }
 
     // 3. Seed alerts
@@ -217,12 +244,20 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     if (!existingVisits || existingVisits.length === 0) {
-      // Find a real caregiver from profiles
-      let caregiverId = "";
-      const { data: existingCaregiver } = await supabase.from("profiles").select("id").eq("role", "caregiver").limit(1);
-      if (existingCaregiver && existingCaregiver.length > 0) {
-        caregiverId = existingCaregiver[0].id;
-      } else {
+      // Assign visits to the caller if logged in, so they show up on
+      // their own pages (/caregiver, /admin, /dashboard) immediately.
+      // Otherwise fall back to finding a caregiver profile.
+      let caregiverId = callerUserId || "";
+
+      if (!caregiverId) {
+        const { data: existingCaregiver } = await supabase.from("profiles").select("id").eq("role", "caregiver").limit(1);
+        if (existingCaregiver && existingCaregiver.length > 0) {
+          caregiverId = existingCaregiver[0].id;
+        }
+      }
+
+      // Final fallback: any profile / any auth user
+      if (!caregiverId) {
         const { data: authUsers } = await supabase.auth.admin.listUsers();
         const caregiverUser = authUsers?.users?.find((u) => u.email === "caregiver@healiox.demo");
         if (caregiverUser) {
@@ -335,7 +370,20 @@ export async function POST(req: NextRequest) {
       ];
 
       for (const visit of visits) {
-        await supabase.from("visits").insert(visit);
+        const { error } = await supabase.from("visits").insert(visit);
+        if (error && /column .* does not exist|schema cache|Could not find/.test(error.message)) {
+          // Strip optional columns that may not exist yet
+          const { organization_id, caregiver_id, ...minimal } = visit;
+          void organization_id;
+          // Keep caregiver_id if the column exists by trying one more time without organization_id first
+          const retry1 = await supabase.from("visits").insert({ ...minimal, caregiver_id });
+          if (retry1.error && /column .* does not exist|schema cache|Could not find/.test(retry1.error.message)) {
+            const retry2 = await supabase.from("visits").insert(minimal);
+            if (retry2.error) console.error("Visit seed error:", retry2.error.message);
+          }
+        } else if (error) {
+          console.error("Visit seed error:", error.message);
+        }
       }
     }
 
