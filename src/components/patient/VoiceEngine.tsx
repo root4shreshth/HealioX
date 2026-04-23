@@ -11,14 +11,26 @@ type VoiceEngineProps = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SpeechRecognitionAny = any;
 
-// Web Speech API wrapper for voice input + output
+/**
+ * Voice engine with proper TTS/ASR coordination.
+ *
+ * Key design:
+ *  - Mic is PAUSED while TTS is speaking (prevents the AI from hearing itself)
+ *  - A 400ms cooldown after TTS ends before resuming the mic (lets speaker
+ *    audio fully die out before we start listening again)
+ *  - Final transcript only fires on `onend` (full sentence), not per-word
+ */
 export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: VoiceEngineProps) {
   const recognitionRef = useRef<SpeechRecognitionAny | null>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const finalBufferRef = useRef<string>(""); // accumulate full sentence here
+  const finalBufferRef = useRef<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
+
+  // Ref flags synchronize TTS/ASR so the mic never captures TTS audio
+  const isSpeakingRef = useRef(false);
+  const shouldListenRef = useRef(false);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,81 +39,104 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
   }, []);
 
   useEffect(() => {
+    shouldListenRef.current = isListening;
+  }, [isListening]);
+
+  const startRecognition = useCallback(() => {
+    // Guard: don't start if we shouldn't be listening or AI is speaking
+    if (!shouldListenRef.current || isSpeakingRef.current) return;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
 
-    if (isListening) {
-      const recognition = new SR();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-IN"; // India locale
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-IN";
 
-      // Reset buffer on each new listening session
-      finalBufferRef.current = "";
+    finalBufferRef.current = "";
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onresult = (event: any) => {
-        let interim = "";
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            // Accumulate final words into buffer — don't fire yet
-            finalBufferRef.current += (finalBufferRef.current ? " " : "") + transcript.trim();
-          } else {
-            interim += transcript;
-          }
-        }
-
-        // Show interim in UI but do NOT send it
-        setInterimTranscript(interim || finalBufferRef.current);
-      };
-
-      // Only fire the transcript callback when the user fully stops speaking
-      recognition.onend = () => {
-        const fullSentence = finalBufferRef.current.trim();
-        if (fullSentence) {
-          onTranscript(fullSentence, true);
-          finalBufferRef.current = "";
-          setInterimTranscript("");
-        }
-
-        // Restart if still listening
-        if (isListening && recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch { /* already started */ }
-        }
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onerror = (event: any) => {
-        if (event.error !== "no-speech" && event.error !== "aborted") {
-          console.error("Speech recognition error:", event.error);
-        }
-      };
-
-      recognitionRef.current = recognition;
-      try { recognition.start(); } catch { /* already started */ }
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch { /* already stopped */ }
-        recognitionRef.current = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      // If AI started speaking mid-recognition, discard and stop listening
+      if (isSpeakingRef.current) {
+        try { recognition.stop(); } catch { /* noop */ }
+        return;
       }
-      finalBufferRef.current = "";
-      setInterimTranscript("");
-    };
-  }, [isListening, onTranscript]);
 
-  // Text-to-speech
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalBufferRef.current += (finalBufferRef.current ? " " : "") + transcript.trim();
+        } else {
+          interim += transcript;
+        }
+      }
+      setInterimTranscript(interim || finalBufferRef.current);
+    };
+
+    recognition.onend = () => {
+      const fullSentence = finalBufferRef.current.trim();
+      // Only fire if we actually captured something AND AI isn't speaking
+      if (fullSentence && !isSpeakingRef.current) {
+        onTranscript(fullSentence, true);
+        finalBufferRef.current = "";
+        setInterimTranscript("");
+      }
+
+      // Auto-restart if still meant to be listening and AI isn't talking
+      if (shouldListenRef.current && !isSpeakingRef.current) {
+        setTimeout(() => {
+          if (shouldListenRef.current && !isSpeakingRef.current) {
+            try { recognitionRef.current?.start(); } catch { /* noop */ }
+          }
+        }, 250);
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.error("Speech recognition error:", event.error);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try { recognition.start(); } catch { /* already started */ }
+  }, [onTranscript]);
+
+  const stopRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* noop */ }
+      recognitionRef.current = null;
+    }
+    finalBufferRef.current = "";
+    setInterimTranscript("");
+  }, []);
+
+  // Start/stop recognition in response to `isListening`
+  useEffect(() => {
+    if (isListening && !isSpeakingRef.current) {
+      startRecognition();
+    } else {
+      stopRecognition();
+    }
+    return () => stopRecognition();
+  }, [isListening, startRecognition, stopRecognition]);
+
+  // ── Text-to-speech with mic pause ────────────────────────────────────────
   const speak = useCallback(
     (text: string) => {
       if (!speakEnabled || !window.speechSynthesis) return;
       window.speechSynthesis.cancel();
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.85;
+      // Strip any stray JSON braces if they snuck through (safety net)
+      const cleanText = text.replace(/[{}]/g, "").replace(/"message"\s*:\s*"/gi, "").trim() || text;
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 0.9;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       utterance.lang = "en-IN";
@@ -112,20 +147,42 @@ export function useVoiceEngine({ onTranscript, isListening, speakEnabled }: Voic
       );
       if (preferred) utterance.voice = preferred;
 
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
+      utterance.onstart = () => {
+        isSpeakingRef.current = true;
+        setIsSpeaking(true);
+        // CRITICAL: stop listening while we speak so mic doesn't capture our voice
+        stopRecognition();
+      };
+
+      const onFinished = () => {
+        isSpeakingRef.current = false;
+        setIsSpeaking(false);
+        // Cooldown before resuming mic — lets speaker audio die out
+        setTimeout(() => {
+          if (shouldListenRef.current && !isSpeakingRef.current) {
+            startRecognition();
+          }
+        }, 400);
+      };
+
+      utterance.onend = onFinished;
+      utterance.onerror = onFinished;
 
       synthRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [speakEnabled]
+    [speakEnabled, startRecognition, stopRecognition]
   );
 
   const stopSpeaking = useCallback(() => {
     window.speechSynthesis?.cancel();
+    isSpeakingRef.current = false;
     setIsSpeaking(false);
-  }, []);
+    // Resume mic immediately on manual stop
+    if (shouldListenRef.current) {
+      setTimeout(() => startRecognition(), 100);
+    }
+  }, [startRecognition]);
 
   return { isSupported, isSpeaking, interimTranscript, speak, stopSpeaking };
 }

@@ -80,6 +80,7 @@ export default function CheckinPage() {
       const res = await fetch("/api/ai/health-checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ message: userMessage, conversationHistory: getHistory(), patientContext: context }),
       });
       const data = await res.json();
@@ -106,6 +107,7 @@ export default function CheckinPage() {
       const res = await fetch("/api/patients/onboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           conversation: getHistory(),
           patientName: onboardName || searchParams.get("name"),
@@ -147,6 +149,7 @@ export default function CheckinPage() {
       const res = await fetch("/api/ai/risk-score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ conversation: getHistory() }),
       });
       const data = await res.json();
@@ -185,7 +188,12 @@ export default function CheckinPage() {
     setAnalyzingImage(true);
     setMessages((prev) => [...prev, { id: `img-${Date.now()}`, role: "user", content: "Let me show you this.", imageUrl: base64, timestamp: new Date() }]);
     try {
-      const res = await fetch("/api/ai/vision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageBase64: base64, conversationContext: messages.slice(-3).map((m) => m.content).join(" ") }) });
+      const res = await fetch("/api/ai/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ imageBase64: base64, conversationContext: messages.slice(-3).map((m) => m.content).join(" ") }),
+      });
       const data = await res.json();
       const aiText = `${data.observation || ""} ${data.healthRelevance || ""} ${data.followUpQuestion || ""}`.trim() || "Thank you for showing me. Can you describe what you're experiencing?";
       setMessages((prev) => [...prev, { id: `vis-${Date.now()}`, role: "ai", content: aiText, timestamp: new Date() }]);
@@ -207,8 +215,11 @@ export default function CheckinPage() {
         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
           <span>{isOnboarding ? "Health Assessment" : isComplete ? "Complete" : `Check-in — ${assessedCount}/7 domains`}</span>
           <div className="flex items-center gap-2">
-            {voiceActive && <span className="flex items-center gap-1 text-teal"><span className="w-1.5 h-1.5 bg-teal rounded-full animate-pulse" />Listening</span>}
-            {isSpeaking && <span className="flex items-center gap-1 text-brand"><Volume2 className="w-3 h-3" />Speaking</span>}
+            {isSpeaking ? (
+              <span className="flex items-center gap-1 text-brand"><Volume2 className="w-3 h-3" />AI speaking · mic paused</span>
+            ) : voiceActive ? (
+              <span className="flex items-center gap-1 text-teal"><span className="w-1.5 h-1.5 bg-teal rounded-full animate-pulse" />Listening</span>
+            ) : null}
           </div>
         </div>
         <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -305,9 +316,9 @@ export default function CheckinPage() {
         <div className="pt-3 border-t border-border space-y-2">
           <div className="flex items-center gap-2">
             <Button variant={voiceActive ? "default" : "outline"} size="sm" onClick={() => setVoiceActive(!voiceActive)}
-              className={`rounded-full text-xs ${voiceActive ? "bg-teal hover:bg-teal-dark text-white" : ""}`}>
+              className={`rounded-full text-xs ${voiceActive ? (isSpeaking ? "bg-muted text-muted-foreground" : "bg-teal hover:bg-teal-dark text-white") : ""}`}>
               {voiceActive ? <Mic className="w-3.5 h-3.5 mr-1" /> : <MicOff className="w-3.5 h-3.5 mr-1" />}
-              {voiceActive ? "Listening..." : "Voice"}
+              {voiceActive ? (isSpeaking ? "Mic paused" : "Listening...") : "Voice"}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setCameraOpen(!cameraOpen)} className={`rounded-full text-xs ${cameraOpen ? "border-brand text-brand" : ""}`}>
               <Camera className="w-3.5 h-3.5 mr-1" />Camera
