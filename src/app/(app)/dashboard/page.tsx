@@ -438,9 +438,19 @@ export default function FamilyDashboard() {
                           <p className="text-[10px] text-green-600 mt-0.5">{v.duration_minutes} min · {v.services.length} services delivered</p>
                         )}
                       </div>
-                      <Badge className={`text-[9px] ${v.status === "completed" ? "bg-green-100 text-green-700" : v.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
-                        {v.status === "completed" ? "✓ Done" : v.status === "in_progress" ? "🔵 Active" : "Scheduled"}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <Badge className={`text-[9px] ${v.status === "completed" ? "bg-green-100 text-green-700" : v.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                          {v.status === "completed" ? "✓ Done" : v.status === "in_progress" ? "🔵 Active" : "Scheduled"}
+                        </Badge>
+                        {v.status === "completed" && v.caregiver_id && (
+                          <Link
+                            href={`/dashboard/rate?caregiver=${v.caregiver_id}&visit=${v.id}&patient=${v.patient_id}`}
+                            className="text-[10px] text-brand hover:underline font-semibold flex items-center gap-0.5"
+                          >
+                            <Star className="w-3 h-3" /> Rate
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}

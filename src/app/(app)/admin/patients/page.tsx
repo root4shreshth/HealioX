@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2, Search, UserPlus, X, MapPin, Phone, Heart,
   Shield, Activity, AlertCircle, ChevronDown, Download,
-  CheckCircle2, User, Calendar,
+  CheckCircle2, User, Calendar, Users, Trash2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -46,6 +46,7 @@ export default function PatientsManagePage() {
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [assignFor, setAssignFor] = useState<Patient | null>(null);
 
   const load = useCallback(async () => {
     const [pRes, cRes] = await Promise.all([
@@ -181,9 +182,14 @@ export default function PatientsManagePage() {
                           )}
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className="font-[var(--font-heading)] font-black text-2xl">{p.risk_score}</div>
-                        <Badge className={`text-[9px] ${RISK_BADGE[p.risk_level]}`}>{p.risk_level}</Badge>
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+                        <div>
+                          <div className="font-[var(--font-heading)] font-black text-2xl">{p.risk_score}</div>
+                          <Badge className={`text-[9px] ${RISK_BADGE[p.risk_level]}`}>{p.risk_level}</Badge>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => setAssignFor(p)} className="text-[10px] h-6 px-2 rounded-full">
+                          <Users className="w-3 h-3 mr-1" />Assign
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -200,6 +206,13 @@ export default function PatientsManagePage() {
             caregivers={caregivers}
             onClose={() => setShowCreate(false)}
             onCreated={() => { setShowCreate(false); load(); }}
+          />
+        )}
+        {assignFor && (
+          <AssignCaregiversModal
+            patient={assignFor}
+            caregivers={caregivers}
+            onClose={() => setAssignFor(null)}
           />
         )}
       </AnimatePresence>
@@ -348,6 +361,137 @@ function CreatePatientModal({ caregivers, onClose, onCreated }: { caregivers: Ca
             </Button>
           </div>
         </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Assign / unassign caregivers to patient ─────────────────────────────────
+type Assignment = { id: string; profile_id: string; is_primary: boolean; caregiver_name: string; notes: string | null };
+
+function AssignCaregiversModal({ patient, caregivers, onClose }: { patient: Patient; caregivers: Caregiver[]; onClose: () => void }) {
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCaregiver, setSelectedCaregiver] = useState("");
+  const [isPrimary, setIsPrimary] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/admin/assignments?patient_id=${patient.id}`, { credentials: "include" });
+    if (res.ok) {
+      const body = await res.json();
+      setAssignments(body.assignments || []);
+    }
+    setLoading(false);
+  }, [patient.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAdd() {
+    if (!selectedCaregiver) return;
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/admin/assignments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        patient_id: patient.id,
+        profile_id: selectedCaregiver,
+        is_primary: isPrimary,
+        notes: notes.trim() || undefined,
+      }),
+    });
+    const body = await res.json();
+    setSaving(false);
+    if (!res.ok) { setError(body.error || "Failed to assign"); return; }
+    setSelectedCaregiver(""); setIsPrimary(false); setNotes("");
+    load();
+  }
+
+  async function handleRemove(profileId: string) {
+    if (!confirm("Remove this caregiver assignment?")) return;
+    const res = await fetch(`/api/admin/assignments?patient_id=${patient.id}&profile_id=${profileId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (res.ok) load();
+  }
+
+  const unassigned = caregivers.filter((c) => !assignments.some((a) => a.profile_id === c.id));
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        className="bg-white rounded-2xl max-w-lg w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b flex items-center justify-between">
+          <div>
+            <h3 className="font-[var(--font-heading)] font-bold text-lg">Assign Caregivers</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{patient.full_name}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0"><X className="w-4 h-4" /></Button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Existing assignments */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Current caregivers ({assignments.length})</p>
+            {loading ? (
+              <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand" /></div>
+            ) : assignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-lg">No caregivers assigned yet</p>
+            ) : (
+              <div className="space-y-2">
+                {assignments.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                    <div className="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center text-xs font-bold shrink-0">
+                      {a.caregiver_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold truncate">{a.caregiver_name}</p>
+                        {a.is_primary && <Badge className="text-[9px] bg-brand/10 text-brand">Primary</Badge>}
+                      </div>
+                      {a.notes && <p className="text-[10px] text-muted-foreground truncate">{a.notes}</p>}
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => handleRemove(a.profile_id)} className="h-7 w-7 p-0 text-red-600 hover:bg-red-50">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add new */}
+          {unassigned.length > 0 && (
+            <div className="border-t pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Add caregiver</p>
+              <div className="space-y-2">
+                <select value={selectedCaregiver} onChange={(e) => setSelectedCaregiver(e.target.value)}
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm">
+                  <option value="">Select caregiver...</option>
+                  {unassigned.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name} ({c.email})</option>
+                  ))}
+                </select>
+                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Notes for this assignment (optional)" rows={2} className="resize-none text-sm" />
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} />
+                  Mark as primary caregiver
+                </label>
+                {error && <p className="text-xs text-red-600 bg-red-50 px-2 py-1.5 rounded">{error}</p>}
+                <Button onClick={handleAdd} disabled={!selectedCaregiver || saving} className="w-full bg-brand hover:bg-brand-dark text-white rounded-full">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4 mr-2" />Assign</>}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </motion.div>
     </motion.div>
   );

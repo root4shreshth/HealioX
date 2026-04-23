@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   HeartPulse, LayoutDashboard, MapPin, MessageCircle,
   Users, Bell, LogOut, Menu, X, Loader2, Building2,
-  UserCog, CalendarDays, AlertCircle, Settings2,
+  UserCog, CalendarDays, AlertCircle, Settings2, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 const NAV_BY_ROLE: Record<string, { href: string; label: string; icon: typeof LayoutDashboard }[]> = {
   caregiver: [
     { href: "/caregiver", label: "My Visits", icon: MapPin },
+    { href: "/caregiver/reports", label: "Reports", icon: FileText },
   ],
   patient: [
     { href: "/patient", label: "AI Assistant", icon: MessageCircle },
@@ -152,6 +153,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <h1 className="font-[var(--font-heading)] text-lg font-bold capitalize">
               {pathname === "/dashboard" ? "Dashboard"
             : pathname === "/caregiver" ? "My Visits"
+            : pathname === "/caregiver/reports" ? "Reports"
             : pathname === "/patient" ? "AI Check-in"
             : pathname === "/admin" ? "Admin Dashboard"
             : pathname === "/admin/caregivers" ? "Caregivers"

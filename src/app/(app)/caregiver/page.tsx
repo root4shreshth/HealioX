@@ -143,27 +143,37 @@ export default function CaregiverPortal() {
     const duration = Math.round(elapsed / 60) || 1;
     setLastPatient({ id: active.patient_id, name: active.patient_name });
 
+    // Route through /api/caregiver/checkout — it updates the visit, writes
+    // the daily_update (family sees it via realtime), AND fires WhatsApp
+    // notifications to linked family members.
     try {
-      const supabase = createClient();
-      const notesField = [notes, handoverNotes ? `\n\n📋 HANDOVER: ${handoverNotes}` : ""].join("").trim();
-      await supabase.from("visits").update({
-        status: "completed", check_out_time: new Date().toISOString(),
-        duration_minutes: duration, services: selectedServices,
-        caregiver_notes: notesField,
-      }).eq("id", activeVisit);
-
-      if (dailyUpdate || moodObs) {
-        await supabase.from("daily_updates").insert({
-          patient_id: active.patient_id,
-          caregiver_id: (await supabase.auth.getUser()).data.user?.id || "unknown",
+      const res = await fetch("/api/caregiver/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
           visit_id: activeVisit,
-          content: dailyUpdate || `Visit completed. ${tasks.filter((t) => t.done).length}/${tasks.length} tasks done.`,
-          mood_observation: moodObs || null,
+          duration_minutes: duration,
+          services: selectedServices,
+          caregiver_notes: notes,
+          handover_notes: handoverNotes,
+          mood_observation: moodObs,
+          daily_update_content: dailyUpdate || undefined,
           medication_taken: tasks.find((t) => t.category === "medication")?.done || false,
           concerns: [],
-        });
+        }),
+      });
+      if (!res.ok) {
+        // Fallback: update directly if API failed (network issue, etc.)
+        const supabase = createClient();
+        const notesField = [notes, handoverNotes ? `\n\n📋 HANDOVER: ${handoverNotes}` : ""].join("").trim();
+        await supabase.from("visits").update({
+          status: "completed", check_out_time: new Date().toISOString(),
+          duration_minutes: duration, services: selectedServices,
+          caregiver_notes: notesField,
+        }).eq("id", activeVisit);
       }
-    } catch { /* continue */ }
+    } catch { /* fallback handled inside */ }
 
     setVisits((prev) => prev.map((v) =>
       v.id === activeVisit
