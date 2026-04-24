@@ -440,6 +440,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 6b. Link THE CALLER (whoever triggered seed) so they see data immediately
+    // regardless of email — critical for auto-seed on first load.
+    if (callerUserId) {
+      const { data: callerProfile } = await supabase
+        .from("profiles")
+        .select("id, role, full_name, email")
+        .eq("id", callerUserId)
+        .single();
+
+      if (callerProfile) {
+        const role = callerProfile.role;
+        if (role === "caregiver") {
+          // Caregiver sees all 8 patients
+          for (const pid of patients.map((p) => p.id)) {
+            await supabase.from("patient_assignments").upsert(
+              { patient_id: pid, profile_id: callerUserId, relationship: "caregiver", is_primary: true },
+              { onConflict: "patient_id,profile_id" }
+            );
+          }
+        } else if (role === "family") {
+          // Family user → linked to Sunita Devi (patient #101) which has the rich check-in history
+          await supabase.from("patient_assignments").upsert(
+            { patient_id: "00000000-0000-0000-0000-000000000101", profile_id: callerUserId, relationship: "family_member", is_primary: true },
+            { onConflict: "patient_id,profile_id" }
+          );
+        } else if (role === "patient") {
+          await supabase.from("patient_assignments").upsert(
+            { patient_id: "00000000-0000-0000-0000-000000000101", profile_id: callerUserId, relationship: "self", is_primary: true },
+            { onConflict: "patient_id,profile_id" }
+          );
+        }
+      }
+    }
+
     // 7. Seed daily updates
     const { data: existingUpdates } = await supabase.from("daily_updates").select("id").limit(1);
     if (!existingUpdates || existingUpdates.length === 0) {
@@ -462,6 +496,42 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+
+    // 8. Seed caregiver ratings (so caregiver reports + family rating page show data).
+    // We need a caregiver AND a family rater — use whoever we can find.
+    try {
+      const { data: cg } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("role", "caregiver")
+        .limit(1);
+      const { data: fam } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("role", "family")
+        .limit(1);
+      const caregiverId = cg?.[0]?.id || callerUserId;
+      const familyId = fam?.[0]?.id;
+
+      if (caregiverId && familyId && caregiverId !== familyId) {
+        const { data: existing } = await supabase
+          .from("caregiver_ratings")
+          .select("id")
+          .eq("caregiver_id", caregiverId)
+          .limit(1);
+        if (!existing || existing.length === 0) {
+          // Single rating per unique (family_id, caregiver_id, patient_id) constraint
+          await supabase.from("caregiver_ratings").insert({
+            caregiver_id: caregiverId,
+            family_id: familyId,
+            patient_id: "00000000-0000-0000-0000-000000000101",
+            org_id: "00000000-0000-0000-0000-000000000001",
+            stars: 5,
+            comment: "Very caring and punctual. Mummy is very comfortable with her. Highly recommended.",
+          });
+        }
+      }
+    } catch { /* caregiver_ratings table may not exist in older schemas */ }
 
     return NextResponse.json({
       success: true,

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Users, AlertTriangle, MapPinCheck, Activity, ChevronRight,
   Bell, Loader2, CheckCircle2, Clock, Shield, TrendingDown, TrendingUp,
-  Eye, DollarSign, Star, Database, FileText, Heart,
+  Eye, DollarSign, Star, FileText, Heart,
   Calendar, ArrowUpRight, ArrowDownRight, Minus,
 } from "lucide-react";
 import { useAlerts, useVisits, useHealthCheckins, useRealtimeRefresh } from "@/hooks/use-supabase-data";
@@ -151,26 +151,33 @@ export default function FamilyDashboard() {
   // Latest check-in for comparison
   const latestCheckin = checkins[0] || null;
 
-  async function seedData() {
-    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
-    window.location.reload();
-  }
+  // Auto-seed if the family account has no linked patient yet (first-login setup)
+  useEffect(() => {
+    if (loading) return;
+    if (!needsSeed) return;
+    if (typeof window === "undefined") return;
+    if (sessionStorage.getItem("healiox_auto_seeded") === "1") return;
+    sessionStorage.setItem("healiox_auto_seeded", "1");
+    (async () => {
+      await fetch("/api/seed", {
+        method: "POST",
+        credentials: "include",
+        headers: { "x-seed-token": "healiox-dev-seed" },
+      });
+      window.location.reload();
+    })();
+  }, [loading, needsSeed]);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand" /></div>;
 
   if (!linkedPatient) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Database className="w-12 h-12 text-muted-foreground mb-4" />
-        <h3 className="font-[var(--font-heading)] text-xl font-bold">
-          {userRole === "provider_admin" ? "No Patient Data Yet" : "No Family Member Linked Yet"}
-        </h3>
+        <Loader2 className="w-10 h-10 text-brand animate-spin mb-4" />
+        <h3 className="font-[var(--font-heading)] text-xl font-bold">Setting up your dashboard…</h3>
         <p className="text-sm text-muted-foreground mt-2 max-w-md">
-          {userRole === "provider_admin"
-            ? "Seed demo data to see the dashboard with patients, visit history, and health check-ins."
-            : "Your account hasn't been linked to a patient yet. Please seed demo data or contact your care provider."}
+          Linking your account to your family member&apos;s care record. This only happens on first login.
         </p>
-        <Button onClick={seedData} className="mt-6 bg-brand hover:bg-brand-dark text-white rounded-full px-6"><Database className="w-4 h-4 mr-2" />Seed Demo Data</Button>
       </div>
     );
   }

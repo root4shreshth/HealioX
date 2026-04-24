@@ -3,9 +3,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Search, Loader2, Database } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { usePatients } from "@/hooks/use-supabase-data";
+import { useAutoSeed } from "@/hooks/use-auto-seed";
 import { useState } from "react";
 import Link from "next/link";
 
@@ -17,17 +17,15 @@ const riskBadge: Record<string, string> = {
 };
 
 export default function PatientsPage() {
-  const { patients, loading, needsSeed } = usePatients();
+  const { patients, loading } = usePatients();
   const [search, setSearch] = useState("");
 
   const filtered = patients.filter((p) =>
     p.full_name.toLowerCase().includes(search.toLowerCase())
   );
 
-  async function seedData() {
-    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
-    window.location.reload();
-  }
+  // Auto-seed on first load if the patient list is empty
+  useAutoSeed(!loading && patients.length === 0, loading, () => window.location.reload());
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand" /></div>;
@@ -36,12 +34,9 @@ export default function PatientsPage() {
   if (patients.length === 0) {
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
-        <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="font-[var(--font-heading)] text-xl font-bold">No Patients Found</h3>
-        <p className="text-sm text-muted-foreground mt-2">Seed demo data to see the patient list.</p>
-        <Button onClick={seedData} className="mt-6 bg-brand hover:bg-brand-dark text-white rounded-full px-6">
-          <Database className="w-4 h-4 mr-2" />Seed Demo Data
-        </Button>
+        <Loader2 className="w-10 h-10 text-brand animate-spin mx-auto mb-4" />
+        <h3 className="font-[var(--font-heading)] text-xl font-bold">Loading patient list…</h3>
+        <p className="text-sm text-muted-foreground mt-2">Preparing demo data on first login.</p>
       </div>
     );
   }

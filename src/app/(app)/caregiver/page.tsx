@@ -7,12 +7,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MapPin, Play, Square, Loader2, Camera, MessageCircle,
-  MapPinCheck, CheckCircle2, Clock, Navigation, Shield, Database,
+  MapPinCheck, CheckCircle2, Clock, Navigation, Shield,
   ClipboardList, ChevronDown, ChevronUp, FileText,
   Activity, AlertTriangle, Brain, TrendingDown, TrendingUp,
   ArrowRight, Info,
 } from "lucide-react";
 import { useVisits, useRealtimeRefresh } from "@/hooks/use-supabase-data";
+import { useAutoSeed } from "@/hooks/use-auto-seed";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -55,6 +56,8 @@ export default function CaregiverPortal() {
   const { user } = useAuth();
   // Filter visits to this caregiver's assignments only
   const { visits, setVisits, loading, refetch } = useVisits({ caregiverId: user?.id ?? null });
+  // Auto-seed on first mount if this caregiver has no visits yet
+  useAutoSeed(!loading && visits.length === 0, loading || !user, refetch);
   const [activeVisit, setActiveVisit] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -190,11 +193,6 @@ export default function CaregiverPortal() {
     setShowSuccess(true);
   }
 
-  async function seedData() {
-    await fetch("/api/seed", { method: "POST", headers: { "x-seed-token": "healiox-dev-seed" } });
-    refetch();
-  }
-
   function formatTime(s: number) {
     return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
   }
@@ -214,12 +212,9 @@ export default function CaregiverPortal() {
   if (visits.length === 0) {
     return (
       <div className="max-w-2xl mx-auto text-center py-20">
-        <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="font-[var(--font-heading)] text-xl font-bold">No Visits Assigned</h3>
-        <p className="text-sm text-muted-foreground mt-2">You have no visits scheduled today.</p>
-        <Button onClick={seedData} className="mt-6 bg-brand hover:bg-brand-dark text-white rounded-full px-6">
-          <Database className="w-4 h-4 mr-2" />Seed Demo Data
-        </Button>
+        <Loader2 className="w-10 h-10 text-brand mx-auto mb-4 animate-spin" />
+        <h3 className="font-[var(--font-heading)] text-xl font-bold">Setting up your workspace…</h3>
+        <p className="text-sm text-muted-foreground mt-2">Preparing today&apos;s patient visits. This takes a few seconds on first login.</p>
       </div>
     );
   }
