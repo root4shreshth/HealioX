@@ -156,15 +156,25 @@ export default function FamilyDashboard() {
     if (loading) return;
     if (!needsSeed) return;
     if (typeof window === "undefined") return;
-    if (sessionStorage.getItem("healiox_auto_seeded") === "1") return;
-    sessionStorage.setItem("healiox_auto_seeded", "1");
+    const key = "healiox_seeded_dashboard";
+    if (sessionStorage.getItem(key) === "1") return;
     (async () => {
-      await fetch("/api/seed", {
-        method: "POST",
-        credentials: "include",
-        headers: { "x-seed-token": "healiox-dev-seed" },
-      });
-      window.location.reload();
+      try {
+        const res = await fetch("/api/seed", {
+          method: "POST",
+          credentials: "include",
+          headers: { "x-seed-token": "healiox-dev-seed" },
+        });
+        if (res.ok) {
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+        } else {
+          const body = await res.text().catch(() => "");
+          console.warn("[auto-seed dashboard] failed", res.status, body);
+        }
+      } catch (err) {
+        console.warn("[auto-seed dashboard] error", err);
+      }
     })();
   }, [loading, needsSeed]);
 

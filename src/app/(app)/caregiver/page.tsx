@@ -57,7 +57,7 @@ export default function CaregiverPortal() {
   // Filter visits to this caregiver's assignments only
   const { visits, setVisits, loading, refetch } = useVisits({ caregiverId: user?.id ?? null });
   // Auto-seed on first mount if this caregiver has no visits yet
-  useAutoSeed(!loading && visits.length === 0, loading || !user, refetch);
+  useAutoSeed(!loading && visits.length === 0, loading || !user, refetch, user?.id);
   const [activeVisit, setActiveVisit] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);

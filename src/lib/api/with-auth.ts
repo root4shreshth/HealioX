@@ -64,12 +64,11 @@ export async function withAuth(
  * Guards against calling /api/seed in production.
  */
 export function rejectInProduction(): NextResponse | null {
-  // Allow seed in production when DEMO_MODE is enabled (hackathon / pitch deploys).
-  // Otherwise block to prevent accidental data overwrites.
-  const demo = process.env.DEMO_MODE === "true" || process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-  if (process.env.NODE_ENV === "production" && !demo) {
+  // Seed endpoint is allowed on the hackathon demo deploy.
+  // Set BLOCK_SEED=true to disable once the product goes live.
+  if (process.env.BLOCK_SEED === "true") {
     return NextResponse.json(
-      { error: "Seed endpoint disabled in production (set DEMO_MODE=true to allow)" },
+      { error: "Seed endpoint disabled" },
       { status: 403 }
     );
   }

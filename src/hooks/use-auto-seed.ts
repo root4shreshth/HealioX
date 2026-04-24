@@ -4,24 +4,35 @@ import { useEffect, useRef } from "react";
 
 /**
  * Automatically seeds demo data on first mount if the portal is empty.
- * Silent — no UI. Fires at most once per browser tab session.
+ * Silent — no UI. Fires at most once per browser tab session per user.
  *
- * @param shouldSeed true when the current view has no data (e.g. visits.length === 0)
- * @param loading    true while the data is still loading (don't seed during load)
- * @param onDone     optional callback after seed completes (e.g. refetch)
+ * Only flags sessionStorage as "done" when the seed succeeds AND the caller
+ * provides an onDone that should cause data to re-appear. If seed fails we
+ * let the next mount retry (no lock-in).
+ *
+ * @param shouldSeed true when the current view has no data
+ * @param loading    true while the data is still loading
+ * @param onDone     called after a successful seed so the caller can refetch
+ * @param userId     optional — ensures the "already seeded" flag is per-user
+ *                   so sign-out/sign-in into a different account retries
  */
-export function useAutoSeed(shouldSeed: boolean, loading: boolean, onDone?: () => void) {
-  const fired = useRef(false);
+export function useAutoSeed(
+  shouldSeed: boolean,
+  loading: boolean,
+  onDone?: () => void,
+  userId?: string | null,
+) {
+  const firing = useRef(false);
 
   useEffect(() => {
-    if (fired.current) return;
+    if (firing.current) return;
     if (loading) return;
     if (!shouldSeed) return;
 
-    // Also skip if we've seeded in this session already
-    if (typeof window !== "undefined" && sessionStorage.getItem("healiox_auto_seeded") === "1") return;
+    const key = `healiox_seeded_${userId || "anon"}`;
+    if (typeof window !== "undefined" && sessionStorage.getItem(key) === "1") return;
 
-    fired.current = true;
+    firing.current = true;
     (async () => {
       try {
         const res = await fetch("/api/seed", {
@@ -29,17 +40,20 @@ export function useAutoSeed(shouldSeed: boolean, loading: boolean, onDone?: () =
           credentials: "include",
           headers: { "x-seed-token": "healiox-dev-seed" },
         });
+
         if (res.ok) {
-          if (typeof window !== "undefined") sessionStorage.setItem("healiox_auto_seeded", "1");
+          if (typeof window !== "undefined") sessionStorage.setItem(key, "1");
           onDone?.();
         } else {
-          // Production or misconfig — fail silently, don't retry
-          if (typeof window !== "undefined") sessionStorage.setItem("healiox_auto_seeded", "1");
+          // Log the error so it's debuggable from DevTools, but allow retry on next mount
+          const body = await res.text().catch(() => "");
+          console.warn("[auto-seed] failed", res.status, body);
+          firing.current = false;
         }
-      } catch {
-        // Network blip — allow retry on next mount
-        fired.current = false;
+      } catch (err) {
+        console.warn("[auto-seed] network error", err);
+        firing.current = false;
       }
     })();
-  }, [shouldSeed, loading, onDone]);
+  }, [shouldSeed, loading, onDone, userId]);
 }
