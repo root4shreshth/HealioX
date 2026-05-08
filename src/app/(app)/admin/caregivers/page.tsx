@@ -6,11 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  UserPlus, Loader2, Search, Mail, Phone, Shield, Clock,
-  CheckCircle2, XCircle, Copy, Check, UserCog, Star, AlertCircle,
-  Trash2, Power, PowerOff, X,
+  UserPlus, Loader2, Search, Mail, Phone, Clock,
+  CheckCircle2, XCircle, Copy, Check, UserCog, AlertCircle,
+  Trash2, Power, PowerOff, X, Upload, Sparkles,
+  ArrowRight, ArrowLeft, BadgeCheck, ScanLine,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { isValidEmail, isValidPhone, isValidName, normalizePhone, isValidAadhaar } from "@/lib/validation";
 
 type Caregiver = {
   id: string;
@@ -18,6 +20,8 @@ type Caregiver = {
   full_name: string;
   phone: string | null;
   is_active: boolean;
+  verification_status?: "unverified" | "pending" | "verified" | "rejected";
+  qualification?: string | null;
   created_at: string;
   updated_at: string;
   stats_today: { assigned: number; completed: number; late: number; avgMin: number };
@@ -136,9 +140,20 @@ export default function CaregiversPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm truncate">{cg.full_name}</p>
+                          {cg.verification_status === "verified" && (
+                            <Badge className="bg-emerald-100 text-emerald-700 text-[9px] border border-emerald-200">
+                              <BadgeCheck className="w-2.5 h-2.5 mr-0.5" />ID Verified
+                            </Badge>
+                          )}
+                          {cg.verification_status === "pending" && (
+                            <Badge className="bg-amber-100 text-amber-700 text-[9px]">Pending review</Badge>
+                          )}
                           {!cg.is_active && <Badge className="bg-gray-100 text-gray-500 text-[9px]">Deactivated</Badge>}
                           {cg.stats_today.late > 0 && <Badge className="bg-amber-100 text-amber-700 text-[9px]"><Clock className="w-2.5 h-2.5 mr-0.5" />{cg.stats_today.late} late</Badge>}
                         </div>
+                        {cg.qualification && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{cg.qualification}</p>
+                        )}
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                           <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{cg.email}</span>
                           {cg.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{cg.phone}</span>}
@@ -205,77 +220,469 @@ export default function CaregiversPage() {
   );
 }
 
-// ── Create caregiver modal ───────────────────────────────────────────────────
-function CreateCaregiverModal({ onClose, onCreated }: { onClose: () => void; onCreated: (cred: { email: string; password: string }) => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState(generatePassword());
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+// ── Add-Caregiver Wizard ─────────────────────────────────────────────────────
+type WizardForm = {
+  full_name: string;
+  email: string;
+  phone: string;
+  password: string;
+  aadhaar_number: string;
+  date_of_birth: string;
+  gender: string;
+  address: string;
+  qualification: string;
+  institution: string;
+  year_of_passing: string;
+};
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
+const EMPTY_FORM: WizardForm = {
+  full_name: "", email: "", phone: "", password: "",
+  aadhaar_number: "", date_of_birth: "", gender: "", address: "",
+  qualification: "", institution: "", year_of_passing: "",
+};
+
+function CreateCaregiverModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated: (cred: { email: string; password: string }) => void;
+}) {
+  const [step, setStep] = useState(1); // 1 = Aadhaar, 2 = Degree, 3 = Confirm
+  const [form, setForm] = useState<WizardForm>(() => ({ ...EMPTY_FORM, password: generatePassword() }));
+  const [aadhaarPreview, setAadhaarPreview] = useState<string | null>(null);
+  const [degreePreview, setDegreePreview] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [aadhaarConfidence, setAadhaarConfidence] = useState<number | null>(null);
+  const [degreeConfidence, setDegreeConfidence] = useState<number | null>(null);
+
+  // ── Inline validation derived from form state ──────────────────────────
+  const emailErr = form.email && !isValidEmail(form.email) ? "Enter a valid email address" : "";
+  const phoneErr = form.phone && !isValidPhone(normalizePhone(form.phone)) ? "Use +<country><number> e.g. +919810000000" : "";
+  const nameErr = form.full_name && !isValidName(form.full_name) ? "Use letters only (2-80 chars)" : "";
+  const aadhaarErr = form.aadhaar_number && !isValidAadhaar(form.aadhaar_number) ? "Aadhaar must be 12 digits" : "";
+
+  function update<K extends keyof WizardForm>(key: K, value: string) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+  async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleUpload(docType: "aadhaar" | "degree", file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File too large. Max 5 MB.");
+      return;
+    }
     setError("");
+    setExtracting(true);
+    try {
+      const base64 = await fileToBase64(file);
+      if (docType === "aadhaar") setAadhaarPreview(base64);
+      else setDegreePreview(base64);
+
+      const res = await fetch("/api/admin/caregivers/extract-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ docType, imageBase64: base64 }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error || "AI extraction failed");
+        setExtracting(false);
+        return;
+      }
+      const ex = body.extracted as Record<string, unknown>;
+
+      if (docType === "aadhaar") {
+        setForm((f) => ({
+          ...f,
+          full_name: typeof ex.fullName === "string" ? ex.fullName : f.full_name,
+          aadhaar_number: typeof ex.aadhaarNumber === "string" ? ex.aadhaarNumber : f.aadhaar_number,
+          date_of_birth: typeof ex.dateOfBirth === "string" ? ex.dateOfBirth : f.date_of_birth,
+          gender: typeof ex.gender === "string" ? ex.gender : f.gender,
+          address: typeof ex.address === "string" ? ex.address : f.address,
+        }));
+        setAadhaarConfidence(typeof ex.confidence === "number" ? ex.confidence : null);
+      } else {
+        setForm((f) => ({
+          ...f,
+          // Only overwrite name if it's still empty (Aadhaar takes priority)
+          full_name: f.full_name || (typeof ex.holderName === "string" ? ex.holderName : ""),
+          qualification: typeof ex.qualification === "string" ? ex.qualification : f.qualification,
+          institution: typeof ex.institution === "string" ? ex.institution : f.institution,
+          year_of_passing: typeof ex.yearOfPassing === "number" ? String(ex.yearOfPassing) : f.year_of_passing,
+        }));
+        setDegreeConfidence(typeof ex.confidence === "number" ? ex.confidence : null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleFinalSubmit() {
+    setError("");
+    // Final guard before hitting the server
+    if (!isValidEmail(form.email)) return setError("Please enter a valid email");
+    if (!isValidName(form.full_name)) return setError("Please enter a valid full name");
+    if (form.phone && !isValidPhone(normalizePhone(form.phone))) {
+      return setError("Please enter a valid phone with country code");
+    }
+
+    setSubmitting(true);
+    const payload = {
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+      full_name: form.full_name.trim(),
+      phone: form.phone ? normalizePhone(form.phone) : undefined,
+      aadhaar_number: form.aadhaar_number ? form.aadhaar_number.replace(/\D/g, "") : undefined,
+      date_of_birth: form.date_of_birth || undefined,
+      gender: form.gender || undefined,
+      address: form.address || undefined,
+      qualification: form.qualification || undefined,
+      institution: form.institution || undefined,
+      year_of_passing: form.year_of_passing ? Number(form.year_of_passing) : undefined,
+      verification_data: {
+        aadhaar_confidence: aadhaarConfidence,
+        degree_confidence: degreeConfidence,
+        verified_at: new Date().toISOString(),
+      },
+      is_verified: !!aadhaarPreview, // Aadhaar required for verified status
+    };
+
     const res = await fetch("/api/admin/caregivers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ full_name: name, email, phone: phone || undefined, password }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     setSubmitting(false);
     if (!res.ok) { setError(data.error || "Failed to create"); return; }
-    onCreated({ email, password });
+    onCreated({ email: payload.email, password: payload.password });
   }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto"
+      onClick={onClose}>
       <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-        className="bg-white rounded-2xl max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-5 border-b flex items-center justify-between">
-          <div>
-            <h3 className="font-[var(--font-heading)] font-bold text-lg">Add Caregiver</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Creates a login account and generates credentials</p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0"><X className="w-4 h-4" /></Button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-3">
-          <div>
-            <label className="text-xs font-medium mb-1 block">Full Name *</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ravi Sharma" required />
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block">Email *</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ravi@sevacare.in" required />
-            <p className="text-[10px] text-muted-foreground mt-1">Used for login</p>
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block">Phone</label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98100 00000" />
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block">Temporary Password *</label>
-            <div className="flex gap-2">
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="font-mono text-sm" />
-              <Button type="button" variant="outline" onClick={() => setPassword(generatePassword())} size="sm">Regen</Button>
+        className="bg-white rounded-2xl max-w-2xl w-full shadow-xl my-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}>
+        {/* Header + step indicator */}
+        <div className="p-5 border-b">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-[var(--font-heading)] font-bold text-lg">Onboard Verified Caregiver</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Upload ID → Upload Degree → Confirm Details</p>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">They can change this on first login</p>
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0"><X className="w-4 h-4" /></Button>
           </div>
+          {/* Stepper */}
+          <div className="flex items-center gap-2">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="flex items-center gap-2 flex-1">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                  step === n ? "bg-brand text-white" : step > n ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
+                }`}>
+                  {step > n ? <Check className="w-3.5 h-3.5" /> : n}
+                </div>
+                <div className="text-xs">
+                  {n === 1 && "Aadhaar"}
+                  {n === 2 && "Degree"}
+                  {n === 3 && "Confirm"}
+                </div>
+                {n < 3 && <div className={`flex-1 h-0.5 ${step > n ? "bg-emerald-500" : "bg-muted"}`} />}
+              </div>
+            ))}
+          </div>
+        </div>
 
-          {error && <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+        <div className="p-5 space-y-4">
+          {/* ── STEP 1: Aadhaar upload ─────────────────────────────── */}
+          {step === 1 && (
+            <UploadStep
+              title="Upload Aadhaar Card"
+              hint="Front side preferred. AI will read name, DOB, gender, address, and 12-digit Aadhaar."
+              preview={aadhaarPreview}
+              extracting={extracting}
+              onFile={(f) => handleUpload("aadhaar", f)}
+              extractedSummary={
+                aadhaarPreview && form.aadhaar_number ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                    <Info label="Name" value={form.full_name} />
+                    <Info label="Aadhaar" value={form.aadhaar_number ? `XXXX XXXX ${form.aadhaar_number.slice(-4)}` : "—"} />
+                    <Info label="DOB" value={form.date_of_birth} />
+                    <Info label="Gender" value={form.gender} />
+                    <Info label="Confidence" value={aadhaarConfidence ? `${Math.round(aadhaarConfidence * 100)}%` : "—"} />
+                  </div>
+                ) : null
+              }
+            />
+          )}
 
-          <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button type="submit" disabled={submitting} className="flex-1 bg-brand hover:bg-brand-dark text-white">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
+          {/* ── STEP 2: Degree upload ──────────────────────────────── */}
+          {step === 2 && (
+            <UploadStep
+              title="Upload Degree / Qualification Certificate"
+              hint="Upload degree, GNM/ANM/BSc Nursing certificate, or any caregiver training credential."
+              preview={degreePreview}
+              extracting={extracting}
+              optional
+              onFile={(f) => handleUpload("degree", f)}
+              extractedSummary={
+                degreePreview && form.qualification ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                    <Info label="Qualification" value={form.qualification} />
+                    <Info label="Institution" value={form.institution} />
+                    <Info label="Year" value={form.year_of_passing} />
+                    <Info label="Confidence" value={degreeConfidence ? `${Math.round(degreeConfidence * 100)}%` : "—"} />
+                  </div>
+                ) : null
+              }
+            />
+          )}
+
+          {/* ── STEP 3: Confirm + login credentials ────────────────── */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
+                <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <p className="font-semibold text-emerald-800">AI extraction complete</p>
+                  <p className="text-emerald-700/80">Review and edit any field before creating the verified account.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <FieldInput
+                  label="Full Name *"
+                  value={form.full_name}
+                  onChange={(v) => update("full_name", v)}
+                  error={nameErr}
+                  placeholder="Ravi Sharma"
+                />
+                <FieldInput
+                  label="Phone (with country code)"
+                  value={form.phone}
+                  type="tel"
+                  inputMode="tel"
+                  pattern="[+0-9 ]*"
+                  onChange={(v) => update("phone", v.replace(/[^\d+ ]/g, ""))}
+                  onBlur={() => form.phone && update("phone", normalizePhone(form.phone))}
+                  error={phoneErr}
+                  placeholder="+919810000000"
+                />
+              </div>
+
+              <FieldInput
+                label="Email * (login)"
+                value={form.email}
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                onChange={(v) => update("email", v.replace(/\s/g, "").toLowerCase())}
+                error={emailErr}
+                placeholder="ravi@sevacare.in"
+              />
+
+              <div className="grid grid-cols-3 gap-3">
+                <FieldInput
+                  label="Aadhaar (12 digits)"
+                  value={form.aadhaar_number}
+                  inputMode="numeric"
+                  maxLength={12}
+                  onChange={(v) => update("aadhaar_number", v.replace(/\D/g, "").slice(0, 12))}
+                  error={aadhaarErr}
+                  placeholder="123412341234"
+                />
+                <FieldInput
+                  label="Date of Birth"
+                  value={form.date_of_birth}
+                  type="date"
+                  onChange={(v) => update("date_of_birth", v)}
+                />
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Gender</label>
+                  <select value={form.gender} onChange={(e) => update("gender", e.target.value)}
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm">
+                    <option value="">—</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <FieldInput
+                label="Address (from Aadhaar)"
+                value={form.address}
+                onChange={(v) => update("address", v)}
+                placeholder="Street, area, city, PIN"
+              />
+
+              <div className="grid grid-cols-3 gap-3">
+                <FieldInput
+                  label="Qualification"
+                  value={form.qualification}
+                  onChange={(v) => update("qualification", v)}
+                  placeholder="GNM / BSc Nursing"
+                />
+                <FieldInput
+                  label="Institution"
+                  value={form.institution}
+                  onChange={(v) => update("institution", v)}
+                  placeholder="Govt. School of Nursing"
+                />
+                <FieldInput
+                  label="Year of Passing"
+                  value={form.year_of_passing}
+                  inputMode="numeric"
+                  maxLength={4}
+                  onChange={(v) => update("year_of_passing", v.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="2019"
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <label className="text-xs font-medium mb-1 block">Temporary Password *</label>
+                <div className="flex gap-2">
+                  <Input value={form.password} onChange={(e) => update("password", e.target.value)}
+                    required minLength={8} className="font-mono text-sm" />
+                  <Button type="button" variant="outline" onClick={() => update("password", generatePassword())} size="sm">Regen</Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Min 8 chars with letters and a digit. They can change this on first login.</p>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />{error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer nav */}
+        <div className="p-4 border-t flex items-center justify-between gap-2 sticky bottom-0 bg-white">
+          <Button variant="outline" disabled={step === 1}
+            onClick={() => { setError(""); setStep(step - 1); }}>
+            <ArrowLeft className="w-4 h-4 mr-1.5" />Back
+          </Button>
+          {step < 3 ? (
+            <Button onClick={() => { setError(""); setStep(step + 1); }}
+              disabled={extracting || (step === 1 && !aadhaarPreview)}
+              className="bg-brand hover:bg-brand-dark text-white">
+              {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+              {step === 1 ? "Next: Degree" : "Next: Confirm"}
+              <ArrowRight className="w-4 h-4 ml-1.5" />
             </Button>
-          </div>
-        </form>
+          ) : (
+            <Button onClick={handleFinalSubmit}
+              disabled={submitting || !!emailErr || !!phoneErr || !!nameErr || !!aadhaarErr || !form.email || !form.full_name}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <BadgeCheck className="w-4 h-4 mr-2" />}
+              Create Verified Caregiver
+            </Button>
+          )}
+        </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+// ── Reusable upload step ────────────────────────────────────────────────────
+function UploadStep({ title, hint, preview, extracting, onFile, extractedSummary, optional }: {
+  title: string;
+  hint: string;
+  preview: string | null;
+  extracting: boolean;
+  onFile: (f: File) => void;
+  extractedSummary?: React.ReactNode;
+  optional?: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="font-semibold text-sm">{title}</p>
+        {optional && <Badge className="bg-muted text-muted-foreground text-[9px]">Optional</Badge>}
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">{hint}</p>
+
+      <label className={`block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+        preview ? "border-emerald-300 bg-emerald-50/30" : "border-muted-foreground/30 hover:border-brand/40 hover:bg-muted/20"
+      }`}>
+        <input type="file" accept="image/*" className="hidden"
+          onChange={(e) => e.target.files && e.target.files[0] && onFile(e.target.files[0])}
+          disabled={extracting}
+        />
+        {extracting ? (
+          <div className="flex flex-col items-center gap-2 py-4">
+            <Loader2 className="w-8 h-8 animate-spin text-brand" />
+            <p className="text-xs font-medium">Analysing with AI…</p>
+            <p className="text-[10px] text-muted-foreground">Extracting fields from the document</p>
+          </div>
+        ) : preview ? (
+          <div className="space-y-3">
+            <img src={preview} alt="preview" className="max-h-40 mx-auto rounded-lg border" />
+            <div className="flex items-center justify-center gap-1 text-xs text-emerald-700 font-medium">
+              <ScanLine className="w-3.5 h-3.5" />Re-upload to re-scan
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 py-4">
+            <div className="w-12 h-12 rounded-full bg-brand/10 flex items-center justify-center">
+              <Upload className="w-6 h-6 text-brand" />
+            </div>
+            <p className="text-sm font-medium">Click to upload or drag &amp; drop</p>
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />JPG, PNG. Max 5 MB. AI auto-fills fields.
+            </p>
+          </div>
+        )}
+      </label>
+
+      {extractedSummary}
+    </div>
+  );
+}
+
+// ── Reusable validated input ────────────────────────────────────────────────
+function FieldInput({ label, value, onChange, error, ...rest }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+  return (
+    <div>
+      <label className="text-xs font-medium mb-1 block">{label}</label>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={error ? "border-red-300 focus-visible:ring-red-200" : ""}
+        {...rest}
+      />
+      {error && <p className="text-[10px] text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{error}</p>}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="bg-muted/40 rounded-lg p-2">
+      <div className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="font-medium truncate">{value || "—"}</div>
+    </div>
   );
 }
 
@@ -337,11 +744,11 @@ function CredentialsModal({ credentials, onClose }: { credentials: { email: stri
   );
 }
 
-// Generate a memorable 8-char password with mixed case + digit
+// Generate a memorable 9-char password with mixed case + digit (passes isValidPassword)
 function generatePassword(): string {
-  const words = ["care", "seva", "heal", "help", "safe", "kind"];
+  const words = ["care", "seva", "heal", "help", "safe", "kind", "trust"];
   const word = words[Math.floor(Math.random() * words.length)];
   const num = Math.floor(Math.random() * 9000) + 1000;
   const cap = word.charAt(0).toUpperCase() + word.slice(1);
-  return `${cap}${num}!`;
+  return `${cap}${num}!`; // e.g. Care4821! → 9 chars, has letter + digit
 }

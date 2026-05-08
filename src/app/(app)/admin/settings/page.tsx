@@ -38,9 +38,9 @@ const ORG_TYPES = [
 
 const PLANS = {
   trial:        { label: "Trial", price: "Free", limits: "14 days, up to 5 patients" },
-  growth:       { label: "Growth", price: "₹999/month", limits: "Up to 10 patients, 3 caregivers" },
-  professional: { label: "Professional", price: "₹2,999/month", limits: "Up to 50 patients, unlimited caregivers" },
-  enterprise:   { label: "Enterprise", price: "Custom", limits: "Unlimited · dedicated support" },
+  fixed:        { label: "Fixed", price: "₹30,000/month", limits: "Flat fee · unlimited patients & caregivers" },
+  per_caregiver:{ label: "Per Caregiver", price: "₹1,000/caregiver/month", limits: "Pay only for active caregivers · unlimited patients" },
+  enterprise:   { label: "Enterprise", price: "Custom", limits: "Fully customised · SLA · dedicated success manager" },
 };
 
 export default function SettingsPage() {

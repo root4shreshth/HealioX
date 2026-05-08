@@ -1,18 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAdmin, validateBody, logActivity } from "@/lib/api/admin-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isValidEmail, isValidPhone, isValidName, isValidPassword, isValidAadhaar, normalizePhone } from "@/lib/validation";
 
 // ── GET /api/admin/caregivers — list all caregivers in this org ─────────────
 export async function GET(req: NextRequest) {
   return withAdmin(req, async (_req, _user, _role, orgId) => {
     const admin = createAdminClient();
 
-    const { data: profiles, error } = await admin
+    let profilesQ = await admin
       .from("profiles")
-      .select("id, email, full_name, role, org_id, phone, is_active, created_at, updated_at")
+      .select("id, email, full_name, role, org_id, phone, is_active, verification_status, qualification, created_at, updated_at")
       .eq("role", "caregiver")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
+
+    // Pre-migration fallback: retry without verification columns
+    if (profilesQ.error && /column .* does not exist|schema cache|Could not find/.test(profilesQ.error.message)) {
+      profilesQ = await admin
+        .from("profiles")
+        .select("id, email, full_name, role, org_id, phone, is_active, created_at, updated_at")
+        .eq("role", "caregiver")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false }) as typeof profilesQ;
+    }
+    const profiles = profilesQ.data;
+    const error = profilesQ.error;
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -56,6 +69,16 @@ type CreateCaregiverBody = {
   password: string;
   full_name: string;
   phone?: string;
+  // Verification fields (optional)
+  aadhaar_number?: string;
+  date_of_birth?: string;
+  gender?: string;
+  address?: string;
+  qualification?: string;
+  institution?: string;
+  year_of_passing?: number;
+  verification_data?: Record<string, unknown>;
+  is_verified?: boolean;
 };
 
 export async function POST(req: NextRequest) {
@@ -63,21 +86,74 @@ export async function POST(req: NextRequest) {
     const v = await validateBody<CreateCaregiverBody>(req, (raw) => {
       if (typeof raw !== "object" || raw === null) return { valid: false, error: "Body must be an object" };
       const b = raw as Record<string, unknown>;
-      if (!b.email || typeof b.email !== "string") return { valid: false, error: "Email is required" };
-      if (!b.password || typeof b.password !== "string" || (b.password as string).length < 6) return { valid: false, error: "Password must be at least 6 characters" };
-      if (!b.full_name || typeof b.full_name !== "string") return { valid: false, error: "Full name is required" };
+
+      // ── Strict field validation ─────────────────────────────────────────
+      const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
+      if (!isValidEmail(email)) return { valid: false, error: "Invalid email address" };
+
+      const password = typeof b.password === "string" ? b.password : "";
+      if (!isValidPassword(password)) {
+        return { valid: false, error: "Password must be 8+ chars with letters and a digit" };
+      }
+
+      const full_name = typeof b.full_name === "string" ? b.full_name.trim() : "";
+      if (!isValidName(full_name)) return { valid: false, error: "Full name must be 2-80 letters" };
+
+      let phone: string | undefined;
+      if (b.phone) {
+        if (typeof b.phone !== "string") return { valid: false, error: "Phone must be a string" };
+        const normalized = normalizePhone(b.phone);
+        if (!isValidPhone(normalized)) {
+          return { valid: false, error: "Invalid phone (use +<country><number>, e.g. +919810000000)" };
+        }
+        phone = normalized;
+      }
+
+      // Verification fields (all optional, but validated when present)
+      const aadhaar = typeof b.aadhaar_number === "string" ? b.aadhaar_number.replace(/\D/g, "") : undefined;
+      if (aadhaar && !isValidAadhaar(aadhaar)) {
+        return { valid: false, error: "Aadhaar number must be 12 digits" };
+      }
+
+      const dob = typeof b.date_of_birth === "string" ? b.date_of_birth : undefined;
+      if (dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+        return { valid: false, error: "date_of_birth must be YYYY-MM-DD" };
+      }
+
+      const gender = typeof b.gender === "string" ? b.gender.toLowerCase() : undefined;
+      if (gender && !["male", "female", "other"].includes(gender)) {
+        return { valid: false, error: "gender must be male/female/other" };
+      }
+
+      const yop = b.year_of_passing != null ? Number(b.year_of_passing) : undefined;
+      if (yop !== undefined && (!Number.isFinite(yop) || yop < 1950 || yop > new Date().getFullYear() + 1)) {
+        return { valid: false, error: "Invalid year_of_passing" };
+      }
+
       return {
         valid: true,
         data: {
-          email: (b.email as string).trim().toLowerCase(),
-          password: b.password as string,
-          full_name: (b.full_name as string).trim(),
-          phone: typeof b.phone === "string" ? b.phone : undefined,
+          email, password, full_name, phone,
+          aadhaar_number: aadhaar,
+          date_of_birth: dob,
+          gender,
+          address: typeof b.address === "string" ? b.address.trim() : undefined,
+          qualification: typeof b.qualification === "string" ? b.qualification.trim() : undefined,
+          institution: typeof b.institution === "string" ? b.institution.trim() : undefined,
+          year_of_passing: yop,
+          verification_data: (b.verification_data && typeof b.verification_data === "object")
+            ? b.verification_data as Record<string, unknown> : undefined,
+          is_verified: b.is_verified === true,
         },
       };
     });
     if (!v.ok) return v.response;
-    const { email, password, full_name, phone } = v.data;
+    const {
+      email, password, full_name, phone,
+      aadhaar_number, date_of_birth, gender, address,
+      qualification, institution, year_of_passing,
+      verification_data, is_verified,
+    } = v.data;
 
     const admin = createAdminClient();
 
@@ -96,10 +172,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create profile row. If extra columns (org_id, phone, is_active) are missing
-    // in the DB schema, fall back to inserting only the core columns so the app
-    // still works pre-migration.
-    const fullProfile = {
+    // Create profile row. Try with all verification fields; on missing-column
+    // errors, progressively strip fields so the app still works pre-migration.
+    const fullProfile: Record<string, unknown> = {
       id: created.user.id,
       email,
       full_name,
@@ -107,12 +182,36 @@ export async function POST(req: NextRequest) {
       org_id: orgId,
       phone: phone || null,
       is_active: true,
+      verification_status: is_verified ? "verified" : "unverified",
+      verified_at: is_verified ? new Date().toISOString() : null,
+      verified_by: is_verified ? user.id : null,
+      aadhaar_number: aadhaar_number || null,
+      date_of_birth: date_of_birth || null,
+      gender: gender || null,
+      address: address || null,
+      qualification: qualification || null,
+      institution: institution || null,
+      year_of_passing: year_of_passing || null,
+      verification_data: verification_data || null,
     };
 
     let profileError = (await admin.from("profiles").upsert(fullProfile)).error;
 
     if (profileError && /column .* does not exist|schema cache|Could not find/.test(profileError.message)) {
-      // Missing column — retry with only core columns
+      // Verification columns missing — retry with core+phone+org only
+      profileError = (await admin.from("profiles").upsert({
+        id: created.user.id,
+        email,
+        full_name,
+        role: "caregiver",
+        org_id: orgId,
+        phone: phone || null,
+        is_active: true,
+      })).error;
+    }
+
+    if (profileError && /column .* does not exist|schema cache|Could not find/.test(profileError.message)) {
+      // Missing org/phone columns — last-ditch retry with bare minimum
       profileError = (await admin.from("profiles").upsert({
         id: created.user.id,
         email,
@@ -138,8 +237,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      caregiver: { id: created.user.id, email, full_name, role: "caregiver", is_active: true },
-      message: "Caregiver created successfully",
+      caregiver: {
+        id: created.user.id, email, full_name, role: "caregiver", is_active: true,
+        verification_status: is_verified ? "verified" : "unverified",
+      },
+      message: is_verified ? "Verified caregiver created" : "Caregiver created",
     });
   });
 }

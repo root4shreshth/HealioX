@@ -10,48 +10,78 @@ import {
   IndianRupee,
 } from "lucide-react";
 
+const FAMILY_PLAN = {
+  name: "Family Care",
+  price: "₹2,000",
+  period: "/month",
+  badge: "For families (B2C)",
+  description: "Direct subscription for families managing care for one elderly parent — perfect for NRIs and adult children.",
+  color: "border-teal/40 ring-2 ring-teal/20",
+  headerBg: "bg-teal/5",
+  cta: "Start Family Plan",
+  ctaClass: "bg-teal hover:bg-teal/90 text-white shadow-lg shadow-teal/25",
+  features: [
+    "1 patient (your parent)",
+    "Up to 4 family member logins",
+    "Real-time family dashboard",
+    "AI health check-ins after each visit",
+    "GPS-verified caregiver visits",
+    "WhatsApp daily updates",
+    "Baseline vs current health comparison",
+    "Appointment calendar",
+    "SOS emergency alerts",
+    "Medication reminders",
+    "Rate & review your caregiver",
+    "Email + WhatsApp support",
+  ],
+  missing: [],
+};
+
 const PLANS = [
   {
-    name: "Growth",
-    price: "₹999",
+    name: "Fixed",
+    price: "₹30,000",
     period: "/month",
     badge: null,
-    description: "For small home care agencies just getting started with digital care management.",
+    description: "Flat monthly fee — predictable cost regardless of how many patients or caregivers you onboard.",
     color: "border-border",
     headerBg: "bg-muted/30",
     cta: "Start Free Trial",
     ctaClass: "border border-brand text-brand hover:bg-brand hover:text-white",
     features: [
-      "Up to 10 patients",
-      "3 caregiver accounts",
-      "AI health check-ins (basic)",
+      "Unlimited patients",
+      "Unlimited caregivers",
+      "Full AI health check-ins + risk scoring",
       "GPS visit verification",
-      "Family portal (read-only)",
-      "Daily caregiver updates",
-      "Email alerts",
-      "Mobile app (iOS & Android)",
+      "Family portal with live dashboard",
+      "WhatsApp family notifications",
+      "Shift handover notes",
+      "SOS emergency alerts",
+      "Medication reminders",
+      "Revenue & billing dashboard",
+      "Export reports (PDF/CSV)",
+      "Email + chat support",
     ],
     missing: [
-      "Advanced AI risk scoring",
-      "Revenue dashboard",
-      "Shift handover notes",
-      "Export reports",
-      "Priority support",
+      "White-label option",
+      "EHR / EMR integration",
+      "Dedicated account manager",
+      "On-premise deployment",
     ],
   },
   {
-    name: "Professional",
-    price: "₹2,999",
-    period: "/month",
+    name: "Per Caregiver",
+    price: "₹1,000",
+    period: "/caregiver/month",
     badge: "Most Popular",
-    description: "For growing agencies that need full AI-powered care intelligence and family transparency.",
+    description: "Pay only for active caregivers. Best for growing agencies that want costs to scale with the team.",
     color: "border-brand ring-2 ring-brand/20",
     headerBg: "bg-brand/5",
     cta: "Start Free Trial",
     ctaClass: "bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/25",
     features: [
-      "Up to 50 patients",
-      "Unlimited caregivers",
+      "Unlimited patients",
+      "Pay only per active caregiver",
       "Full AI health check-ins + risk scoring",
       "GPS visit verification",
       "Family portal with live dashboard",
@@ -71,16 +101,16 @@ const PLANS = [
     name: "Enterprise",
     price: "Custom",
     period: "",
-    badge: "For large agencies",
-    description: "Multi-branch organisations, nursing homes, and health networks needing custom deployment.",
+    badge: "Fully customised",
+    description: "Multi-branch organisations, hospitals, and health networks needing custom deployment, SLAs, and integrations.",
     color: "border-border",
     headerBg: "bg-muted/30",
     cta: "Contact Sales",
     ctaClass: "border border-foreground text-foreground hover:bg-foreground hover:text-white",
     features: [
-      "Unlimited patients & caregivers",
+      "Everything in Per-Caregiver plan",
       "Multi-branch / multi-city support",
-      "White-label option",
+      "White-label option (agency.healiox.in)",
       "Custom AI model fine-tuning",
       "EHR / EMR integration",
       "Aadhaar-linked patient records",
@@ -88,7 +118,7 @@ const PLANS = [
       "Dedicated account manager",
       "On-premise deployment option",
       "SLA uptime guarantee",
-      "Custom contract & billing",
+      "Custom contract & billing terms",
     ],
     missing: [],
   },
@@ -155,7 +185,57 @@ export default function PricingPage() {
           </motion.div>
         </div>
 
-        {/* Pricing cards */}
+        {/* B2C Family plan */}
+        <div className="mb-12">
+          <div className="text-center mb-6">
+            <Badge className="bg-teal/10 text-teal border-0 mb-2">For Families</Badge>
+            <h2 className="font-[var(--font-heading)] text-2xl font-black">Caring for one elderly parent?</h2>
+            <p className="text-sm text-muted-foreground mt-1">Direct B2C plan — no agency required.</p>
+          </div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto">
+            <div className={`rounded-2xl border ${FAMILY_PLAN.color} overflow-hidden`}>
+              <div className={`${FAMILY_PLAN.headerBg} px-6 py-6 border-b border-border flex items-start justify-between gap-6 flex-wrap`}>
+                <div className="flex-1 min-w-[240px]">
+                  <Badge className="mb-3 text-xs bg-teal text-white">{FAMILY_PLAN.badge}</Badge>
+                  <h2 className="font-[var(--font-heading)] text-2xl font-black">{FAMILY_PLAN.name}</h2>
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{FAMILY_PLAN.description}</p>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-end gap-1 justify-end">
+                    <span className="font-[var(--font-heading)] text-4xl font-black">{FAMILY_PLAN.price}</span>
+                    <span className="text-muted-foreground text-sm mb-1">{FAMILY_PLAN.period}</span>
+                  </div>
+                  <Link href="/register?plan=family">
+                    <Button className={`mt-3 rounded-xl h-11 px-6 font-semibold ${FAMILY_PLAN.ctaClass}`}>
+                      {FAMILY_PLAN.cta} <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                  <p className="text-[11px] text-muted-foreground mt-2">14-day free trial · Cancel anytime</p>
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">What&apos;s included</p>
+                <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-2">
+                  {FAMILY_PLAN.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-teal shrink-0 mt-0.5" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Divider for B2B section */}
+        <div className="text-center mb-8">
+          <Badge className="bg-brand/10 text-brand border-0 mb-2">For Care Agencies</Badge>
+          <h2 className="font-[var(--font-heading)] text-2xl font-black">Running a home care business?</h2>
+          <p className="text-sm text-muted-foreground mt-1">Three flexible models — pick what fits your team size and growth stage.</p>
+        </div>
+
+        {/* B2B Pricing cards */}
         <div className="grid lg:grid-cols-3 gap-6 mb-20">
           {PLANS.map((plan, i) => (
             <motion.div key={plan.name} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
