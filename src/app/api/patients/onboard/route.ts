@@ -3,7 +3,7 @@ import { aiComplete } from "@/lib/ai/openrouter";
 import { withAuth } from "@/lib/api/with-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ONBOARDING_PROMPT = `You are analyzing a patient's initial health consultation conversation for HealioX, an India-focused elder home care platform.
+const ONBOARDING_PROMPT = `You are analyzing a patient's initial health consultation conversation for AayuCare, an India-focused elder home care platform.
 
 From the conversation, extract a structured patient profile. The patient described their health issues, conditions, and needs.
 

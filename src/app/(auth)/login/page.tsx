@@ -24,7 +24,7 @@ function homeForRole(role: string): string {
 const DEMO_ACCOUNTS = [
   {
     role: "provider_admin",
-    email: "admin@healiox.demo",
+    email: "admin@aayucare.demo",
     label: "Admin",
     sub: "Full admin portal · all data",
     icon: Building2,
@@ -35,7 +35,7 @@ const DEMO_ACCOUNTS = [
   },
   {
     role: "caregiver",
-    email: "caregiver@healiox.demo",
+    email: "caregiver@aayucare.demo",
     label: "Caregiver",
     sub: "Visit tracking & check-in",
     icon: User,
@@ -46,7 +46,7 @@ const DEMO_ACCOUNTS = [
   },
   {
     role: "patient",
-    email: "patient@healiox.demo",
+    email: "patient@aayucare.demo",
     label: "Patient",
     sub: "AI health check-in",
     icon: Heart,
@@ -57,7 +57,7 @@ const DEMO_ACCOUNTS = [
   },
   {
     role: "family",
-    email: "family@healiox.demo",
+    email: "family@aayucare.demo",
     label: "Family",
     sub: "Dashboard & monitoring",
     icon: Users,
@@ -202,7 +202,7 @@ export default function LoginPage() {
         <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
           <HeartPulse className="w-6 h-6 text-white" />
         </div>
-        <span className="font-[var(--font-heading)] font-bold text-xl">HealioX</span>
+        <span className="font-[var(--font-heading)] font-bold text-xl">AayuCare</span>
       </div>
 
       <div>

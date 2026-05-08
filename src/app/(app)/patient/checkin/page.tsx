@@ -306,7 +306,7 @@ CRITICAL RULES:
                 {msg.role === "ai" && (
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <HeartPulse className="w-3.5 h-3.5 text-teal" />
-                    <span className="text-xs font-semibold text-teal">HealioX AI</span>
+                    <span className="text-xs font-semibold text-teal">AayuCare AI</span>
                   </div>
                 )}
                 {msg.imageUrl && <div className="mb-2 rounded-xl overflow-hidden"><img src={msg.imageUrl} alt="Captured" className="w-full h-32 object-cover" /></div>}

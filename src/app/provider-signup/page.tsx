@@ -107,7 +107,7 @@ export default function ProviderSignupPage() {
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
               <HeartPulse className="w-5 h-5 text-white" />
             </div>
-            <span className="font-[var(--font-heading)] font-bold text-lg">HealioX</span>
+            <span className="font-[var(--font-heading)] font-bold text-lg">AayuCare</span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground hidden sm:inline">Already have an account?</span>
@@ -126,7 +126,7 @@ export default function ProviderSignupPage() {
             <h1 className="font-[var(--font-heading)] text-3xl sm:text-4xl font-black tracking-tight">
               Start your care agency
             </h1>
-            <p className="mt-2 text-muted-foreground">Create your HealioX organization in under 2 minutes</p>
+            <p className="mt-2 text-muted-foreground">Create your AayuCare organization in under 2 minutes</p>
 
             {/* Step indicator */}
             <div className="mt-6 flex items-center gap-2">

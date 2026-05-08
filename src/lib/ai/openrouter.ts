@@ -9,7 +9,7 @@ function getClient() {
       apiKey: process.env.OPENROUTER_API_KEY || "missing",
       defaultHeaders: {
         "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "X-Title": "HealioX Care Intelligence",
+        "X-Title": "AayuCare Care Intelligence",
       },
     });
   }

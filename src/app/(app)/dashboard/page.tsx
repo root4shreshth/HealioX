@@ -156,14 +156,14 @@ export default function FamilyDashboard() {
     if (loading) return;
     if (!needsSeed) return;
     if (typeof window === "undefined") return;
-    const key = "healiox_seeded_dashboard";
+    const key = "aayucare_seeded_dashboard";
     if (sessionStorage.getItem(key) === "1") return;
     (async () => {
       try {
         const res = await fetch("/api/seed", {
           method: "POST",
           credentials: "include",
-          headers: { "x-seed-token": "healiox-dev-seed" },
+          headers: { "x-seed-token": "aayucare-dev-seed" },
         });
         if (res.ok) {
           sessionStorage.setItem(key, "1");

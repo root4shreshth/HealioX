@@ -29,7 +29,7 @@ export function useAutoSeed(
     if (loading) return;
     if (!shouldSeed) return;
 
-    const key = `healiox_seeded_${userId || "anon"}`;
+    const key = `aayucare_seeded_${userId || "anon"}`;
     if (typeof window !== "undefined" && sessionStorage.getItem(key) === "1") return;
 
     firing.current = true;
@@ -38,7 +38,7 @@ export function useAutoSeed(
         const res = await fetch("/api/seed", {
           method: "POST",
           credentials: "include",
-          headers: { "x-seed-token": "healiox-dev-seed" },
+          headers: { "x-seed-token": "aayucare-dev-seed" },
         });
 
         if (res.ok) {

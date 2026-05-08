@@ -27,7 +27,7 @@ export default function AuthLayout({
               <HeartPulse className="w-6 h-6 text-white" />
             </div>
             <span className="font-[var(--font-heading)] font-bold text-xl">
-              HealioX
+              AayuCare
             </span>
           </Link>
 
@@ -68,7 +68,7 @@ export default function AuthLayout({
 
           {/* Footer */}
           <p className="text-sm text-white/40">
-            &copy; 2026 HealioX &middot; UWA Hack for Impact
+            &copy; 2026 AayuCare &middot; UWA Hack for Impact
           </p>
         </div>
       </div>

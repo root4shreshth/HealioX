@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   // Require a secret token even in dev/staging so it can't be called accidentally
   const token = req.headers.get("x-seed-token");
-  if (token !== (process.env.SEED_SECRET || "healiox-dev-seed")) {
+  if (token !== (process.env.SEED_SECRET || "aayucare-dev-seed")) {
     return NextResponse.json({ error: "Forbidden: invalid seed token" }, { status: 403 });
   }
 
@@ -259,12 +259,12 @@ export async function POST(req: NextRequest) {
       // Final fallback: any profile / any auth user
       if (!caregiverId) {
         const { data: authUsers } = await supabase.auth.admin.listUsers();
-        const caregiverUser = authUsers?.users?.find((u) => u.email === "caregiver@healiox.demo");
+        const caregiverUser = authUsers?.users?.find((u) => u.email === "caregiver@aayucare.demo");
         if (caregiverUser) {
           caregiverId = caregiverUser.id;
           await supabase.from("profiles").upsert({
             id: caregiverId, role: "caregiver",
-            full_name: "Ravi Sharma (Home Attendant)", email: "caregiver@healiox.demo",
+            full_name: "Ravi Sharma (Home Attendant)", email: "caregiver@aayucare.demo",
             organization_id: "00000000-0000-0000-0000-000000000001",
           });
         } else {
@@ -278,7 +278,7 @@ export async function POST(req: NextRequest) {
               await supabase.from("profiles").upsert({
                 id: caregiverId, role: "caregiver",
                 full_name: anyUser.user_metadata?.full_name || "Home Attendant",
-                email: anyUser.email || "caregiver@healiox.demo",
+                email: anyUser.email || "caregiver@aayucare.demo",
                 organization_id: "00000000-0000-0000-0000-000000000001",
               });
             }
@@ -420,12 +420,12 @@ export async function POST(req: NextRequest) {
     // 6. Link demo users to patients
     const demoLinks = [
       {
-        email: "caregiver@healiox.demo",
+        email: "caregiver@aayucare.demo",
         patientIds: ["00000000-0000-0000-0000-000000000101", "00000000-0000-0000-0000-000000000102", "00000000-0000-0000-0000-000000000103", "00000000-0000-0000-0000-000000000104", "00000000-0000-0000-0000-000000000105", "00000000-0000-0000-0000-000000000106", "00000000-0000-0000-0000-000000000107", "00000000-0000-0000-0000-000000000108"],
         relationship: "caregiver",
       },
-      { email: "patient@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "self" },
-      { email: "family@healiox.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "family_member" },
+      { email: "patient@aayucare.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "self" },
+      { email: "family@aayucare.demo", patientIds: ["00000000-0000-0000-0000-000000000101"], relationship: "family_member" },
     ];
 
     for (const link of demoLinks) {

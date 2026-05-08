@@ -110,7 +110,7 @@ const PLANS = [
     features: [
       "Everything in Per-Caregiver plan",
       "Multi-branch / multi-city support",
-      "White-label option (agency.healiox.in)",
+      "White-label option (agency.aayucare.in)",
       "Custom AI model fine-tuning",
       "EHR / EMR integration",
       "Aadhaar-linked patient records",
@@ -138,15 +138,15 @@ const FAQS = [
     a: "We'll notify you when you're at 80% capacity. You can upgrade to the next plan at any time — we won't cut off access without warning.",
   },
   {
-    q: "Is HealioX compliant with Indian health regulations?",
-    a: "HealioX is designed to align with Ministry of Health & Family Welfare guidelines and supports Ayushman Bharat / PM-JAY record formats. Enterprise customers can request formal compliance reports.",
+    q: "Is AayuCare compliant with Indian health regulations?",
+    a: "AayuCare is designed to align with Ministry of Health & Family Welfare guidelines and supports Ayushman Bharat / PM-JAY record formats. Enterprise customers can request formal compliance reports.",
   },
   {
     q: "Do caregivers need to pay anything?",
     a: "No. Caregiver accounts are free and unlimited on Professional and Enterprise plans. Only the care agency pays the subscription.",
   },
   {
-    q: "What languages does HealioX support?",
+    q: "What languages does AayuCare support?",
     a: "The platform supports English with Hindi, Tamil, Marathi, Gujarati, and Punjabi coming in Q3 2026. The AI voice assistant already works in en-IN locale.",
   },
 ];
@@ -161,7 +161,7 @@ export default function PricingPage() {
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
               <HeartPulse className="w-5 h-5 text-white" />
             </div>
-            <span className="font-[var(--font-heading)] font-bold text-lg">HealioX</span>
+            <span className="font-[var(--font-heading)] font-bold text-lg">AayuCare</span>
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/login"><Button variant="ghost" size="sm" className="text-sm">Sign In</Button></Link>
@@ -257,7 +257,7 @@ export default function PricingPage() {
 
                 {/* CTA */}
                 <div className="px-6 py-4 border-b border-border">
-                  <Link href={plan.name === "Enterprise" ? "mailto:sales@healiox.in" : "/register"}>
+                  <Link href={plan.name === "Enterprise" ? "mailto:sales@aayucare.in" : "/register"}>
                     <Button className={`w-full rounded-xl h-11 font-semibold transition-all ${plan.ctaClass}`}>
                       {plan.cta} <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
@@ -290,9 +290,9 @@ export default function PricingPage() {
           ))}
         </div>
 
-        {/* Why HealioX */}
+        {/* Why AayuCare */}
         <div className="mb-20">
-          <h2 className="font-[var(--font-heading)] text-3xl font-black text-center mb-10">Why care agencies choose HealioX</h2>
+          <h2 className="font-[var(--font-heading)] text-3xl font-black text-center mb-10">Why care agencies choose AayuCare</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
               { icon: Shield, title: "GPS Visit Verification", desc: "Every caregiver check-in is GPS stamped and timestamped — families and agencies always know visits actually happened.", color: "text-brand bg-brand/10" },
@@ -320,7 +320,7 @@ export default function PricingPage() {
           <h2 className="font-[var(--font-heading)] text-2xl font-black text-center mb-8">Trusted by care agencies across India</h2>
           <div className="grid md:grid-cols-3 gap-5">
             {[
-              { quote: "HealioX transformed how we operate. Our families now message us saying they finally feel confident about care.", name: "Dr. Anjali Mehta", org: "Aarogya Home Care, Delhi", stars: 5 },
+              { quote: "AayuCare transformed how we operate. Our families now message us saying they finally feel confident about care.", name: "Dr. Anjali Mehta", org: "Aarogya Home Care, Delhi", stars: 5 },
               { quote: "The GPS verification alone saved us from two fraudulent caregiver claims in the first month. Worth every rupee.", name: "Rakesh Gupta", org: "SevaBhav Services, Mumbai", stars: 5 },
               { quote: "Our NRI clients love the real-time dashboard. They can check on their parents from Singapore anytime.", name: "Priya Nair", org: "CaringHands, Bangalore", stars: 5 },
             ].map((t) => (

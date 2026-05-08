@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
         id: placeholderId,
         role: "caregiver",
         full_name: "Pending Assignment",
-        email: "unassigned@healiox.system",
+        email: "unassigned@aayucare.system",
         organization_id: patient.organization_id || "00000000-0000-0000-0000-000000000001",
       });
       if (profileError) console.error("Placeholder error:", profileError);

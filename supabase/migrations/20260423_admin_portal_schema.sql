@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- HealioX — Admin Portal Schema Migration
+-- AayuCare — Admin Portal Schema Migration
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New Query).
 -- Safe to run multiple times: all statements use IF NOT EXISTS guards.

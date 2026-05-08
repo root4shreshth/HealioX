@@ -157,7 +157,7 @@ export default function PatientPortal() {
               <HeartPulse className="w-10 h-10 text-white" />
             </div>
           </div>
-          <h2 className="font-[var(--font-heading)] text-2xl font-black">Welcome to HealioX</h2>
+          <h2 className="font-[var(--font-heading)] text-2xl font-black">Welcome to AayuCare</h2>
           <p className="text-sm text-muted-foreground mt-2">Let&apos;s set up your profile. Then you&apos;ll talk to our AI health assistant.</p>
         </motion.div>
         <Card>

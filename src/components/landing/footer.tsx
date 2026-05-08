@@ -13,7 +13,7 @@ export function Footer() {
                 <HeartPulse className="w-5 h-5 text-white" />
               </div>
               <span className="font-[var(--font-heading)] font-bold text-lg">
-                HealioX
+                AayuCare
               </span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground max-w-xs leading-relaxed">
@@ -68,7 +68,7 @@ export function Footer() {
 
         <div className="border-t border-border mt-8 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="text-xs text-muted-foreground">
-            &copy; 2026 HealioX Care Intelligence Platform. UWA Hack for Impact - Team NDIS 4.
+            &copy; 2026 AayuCare Care Intelligence Platform. UWA Hack for Impact - Team NDIS 4.
           </p>
           <p className="text-xs text-muted-foreground">
             Built with care for vulnerable Australians.

@@ -83,7 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
             <HeartPulse className="w-5 h-5 text-white" />
           </div>
-          <span className="font-[var(--font-heading)] font-bold text-lg tracking-tight">HealioX</span>
+          <span className="font-[var(--font-heading)] font-bold text-lg tracking-tight">AayuCare</span>
         </div>
         {mobile && (
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>

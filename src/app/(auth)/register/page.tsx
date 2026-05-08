@@ -94,7 +94,7 @@ export default function RegisterPage() {
         <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
           <HeartPulse className="w-6 h-6 text-white" />
         </div>
-        <span className="font-[var(--font-heading)] font-bold text-xl">HealioX</span>
+        <span className="font-[var(--font-heading)] font-bold text-xl">AayuCare</span>
       </div>
 
       <div>
@@ -102,7 +102,7 @@ export default function RegisterPage() {
           Create Account
         </h2>
         <p className="mt-2 text-muted-foreground">
-          Join HealioX and transform care delivery
+          Join AayuCare and transform care delivery
         </p>
       </div>
 

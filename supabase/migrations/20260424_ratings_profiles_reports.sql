@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- HealioX — Ratings, caregiver profiles, reports
+-- AayuCare — Ratings, caregiver profiles, reports
 -- Safe to run multiple times (all statements use IF NOT EXISTS guards).
 -- ═══════════════════════════════════════════════════════════════════════════
 

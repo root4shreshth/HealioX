@@ -73,7 +73,7 @@ export function Solution() {
             <span className="text-gradient">One Connected Loop.</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            HealioX closes the gap between care delivery, patient wellbeing, and
+            AayuCare closes the gap between care delivery, patient wellbeing, and
             public accountability in one seamless platform.
           </p>
         </motion.div>

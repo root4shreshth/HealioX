@@ -160,7 +160,7 @@ export function visitCompletedMessage(opts: {
   portalUrl?: string;
 }): string {
   const lines = [
-    `🏥 *HealioX care visit completed*`,
+    `🏥 *AayuCare care visit completed*`,
     ``,
     `👤 Patient: *${opts.patientName}*`,
     `👨‍⚕️ Caregiver: ${opts.caregiverName}`,
@@ -172,7 +172,7 @@ export function visitCompletedMessage(opts: {
     const short = opts.notes.length > 200 ? opts.notes.slice(0, 197) + "..." : opts.notes;
     lines.push(``, `📝 Caregiver notes:`, short);
   }
-  lines.push(``, `📊 See full details: ${opts.portalUrl || "your HealioX dashboard"}`);
+  lines.push(``, `📊 See full details: ${opts.portalUrl || "your AayuCare dashboard"}`);
   return lines.join("\n");
 }
 

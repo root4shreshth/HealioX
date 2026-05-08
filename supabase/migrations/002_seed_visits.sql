@@ -20,7 +20,7 @@ BEGIN
 
     -- Insert placeholder caregiver profile if not exists
     INSERT INTO profiles (id, role, full_name, email, organization_id)
-    VALUES (demo_caregiver_id, 'caregiver', 'Sarah Johnson', 'caregiver@healiox.demo', '00000000-0000-0000-0000-000000000001')
+    VALUES (demo_caregiver_id, 'caregiver', 'Sarah Johnson', 'caregiver@aayucare.demo', '00000000-0000-0000-0000-000000000001')
     ON CONFLICT (id) DO NOTHING;
 
     -- Visit 1: Margaret Sullivan (completed)

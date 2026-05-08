@@ -1,4 +1,4 @@
-# HealioX — Feature Recommendations (All Portals)
+# AayuCare — Feature Recommendations (All Portals)
 
 Prioritised by impact × effort. "Quick wins" are doable in a day; "strategic" features differentiate the product for the Indian elder-care market.
 
@@ -71,8 +71,8 @@ Pitch this to state health departments, municipal corporations, and MoHFW:
 
 - **Aggregate health map** — Anonymised heatmap of elder-health outcomes by district. Hypertension hotspots, fall-risk clusters, medication-adherence gaps.
 - **ASHA worker integration** — ASHA workers become entry-level caregivers; platform gives them training + bonus for elder check-ins beyond their normal MCH duties.
-- **Ayushman Bharat claim automation** — Providers submit claims through HealioX; state reimburses monthly.
-- **PM-JAY elder package** — Lobby for an elder-specific package (₹50,000/year) that includes home care visits — HealioX becomes the default rail.
+- **Ayushman Bharat claim automation** — Providers submit claims through AayuCare; state reimburses monthly.
+- **PM-JAY elder package** — Lobby for an elder-specific package (₹50,000/year) that includes home care visits — AayuCare becomes the default rail.
 
 ---
 

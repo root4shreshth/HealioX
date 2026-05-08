@@ -27,7 +27,7 @@ export function Navbar() {
               <HeartPulse className="w-5 h-5 text-white" />
             </div>
             <span className="font-[var(--font-heading)] font-bold text-lg tracking-tight">
-              HealioX
+              AayuCare
             </span>
           </Link>
 

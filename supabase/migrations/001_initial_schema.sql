@@ -1,5 +1,5 @@
 -- ============================================================
--- HealioX Care Intelligence Platform - Database Schema
+-- AayuCare Care Intelligence Platform - Database Schema
 -- ============================================================
 
 -- ENUMS

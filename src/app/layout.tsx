@@ -14,7 +14,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "HealioX | Care Intelligence Platform",
+  title: "AayuCare | Care Intelligence Platform",
   description:
     "AI-Powered Transparency, Early Intervention & Accountability for Aged Care and NDIS Services",
   keywords: ["aged care", "NDIS", "healthcare", "AI", "Australia"],
