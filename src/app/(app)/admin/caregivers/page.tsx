@@ -223,7 +223,8 @@ export default function CaregiversPage() {
 // ── Add-Caregiver Wizard ─────────────────────────────────────────────────────
 type WizardForm = {
   full_name: string;
-  email: string;
+  email_username: string;
+  email_domain: string;
   phone: string;
   password: string;
   aadhaar_number: string;
@@ -235,11 +236,58 @@ type WizardForm = {
   year_of_passing: string;
 };
 
+const EMAIL_DOMAINS = [
+  "@gmail.com",
+  "@yahoo.com",
+  "@yahoo.co.in",
+  "@outlook.com",
+  "@hotmail.com",
+  "@icloud.com",
+  "@proton.me",
+  "@aayucare.in",
+  "@aayucare.demo",
+];
+
 const EMPTY_FORM: WizardForm = {
-  full_name: "", email: "", phone: "", password: "",
+  full_name: "", email_username: "", email_domain: "@gmail.com",
+  phone: "", password: "",
   aadhaar_number: "", date_of_birth: "", gender: "", address: "",
   qualification: "", institution: "", year_of_passing: "",
 };
+
+const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
+
+// Token-set name comparison — returns match flag, score (0-1), and a reason.
+function compareNames(a: string, b: string) {
+  const norm = (s: string) =>
+    (s || "")
+      .toLowerCase()
+      .replace(/[^a-zऀ-ॿ\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length >= 2);
+
+  const tA = new Set(norm(a));
+  const tB = new Set(norm(b));
+  if (tA.size === 0 || tB.size === 0) {
+    return { match: false, score: 0, reason: "Could not read one of the names." };
+  }
+  const intersection = [...tA].filter((t) => tB.has(t));
+  const score = intersection.length / Math.max(tA.size, tB.size);
+
+  // Strong match: 2+ tokens overlap (typical first-name + surname)
+  if (intersection.length >= 2) {
+    return { match: true, score, reason: "" };
+  }
+  // Weak match: single token, but one of the names is itself just one token
+  if (intersection.length === 1 && (tA.size === 1 || tB.size === 1)) {
+    return { match: true, score, reason: "" };
+  }
+  return {
+    match: false,
+    score,
+    reason: `Aadhaar name "${a}" does not match degree name "${b}".`,
+  };
+}
 
 function CreateCaregiverModal({ onClose, onCreated }: {
   onClose: () => void;
@@ -255,11 +303,29 @@ function CreateCaregiverModal({ onClose, onCreated }: {
   const [aadhaarConfidence, setAadhaarConfidence] = useState<number | null>(null);
   const [degreeConfidence, setDegreeConfidence] = useState<number | null>(null);
 
+  // Names extracted from each document — used for cross-document matching.
+  const [aadhaarName, setAadhaarName] = useState("");
+  const [degreeName, setDegreeName] = useState("");
+
+  // Composed full email
+  const composedEmail = `${form.email_username}${form.email_domain}`.toLowerCase();
+
   // ── Inline validation derived from form state ──────────────────────────
-  const emailErr = form.email && !isValidEmail(form.email) ? "Enter a valid email address" : "";
+  const usernameErr = form.email_username && !USERNAME_RE.test(form.email_username)
+    ? "Only letters, digits, dot, dash, underscore — no @ or spaces"
+    : "";
+  const emailErr = (!usernameErr && form.email_username && !isValidEmail(composedEmail))
+    ? "Resulting email is invalid"
+    : "";
   const phoneErr = form.phone && !isValidPhone(normalizePhone(form.phone)) ? "Use +<country><number> e.g. +919810000000" : "";
   const nameErr = form.full_name && !isValidName(form.full_name) ? "Use letters only (2-80 chars)" : "";
   const aadhaarErr = form.aadhaar_number && !isValidAadhaar(form.aadhaar_number) ? "Aadhaar must be 12 digits" : "";
+
+  // ── Name match status — only meaningful once both docs are uploaded ────
+  const nameMatch = (aadhaarName && degreeName)
+    ? compareNames(aadhaarName, degreeName)
+    : null;
+  const nameMismatchBlocking = nameMatch !== null && !nameMatch.match;
 
   function update<K extends keyof WizardForm>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -302,9 +368,11 @@ function CreateCaregiverModal({ onClose, onCreated }: {
       const ex = body.extracted as Record<string, unknown>;
 
       if (docType === "aadhaar") {
+        const extractedName = typeof ex.fullName === "string" ? ex.fullName : "";
+        setAadhaarName(extractedName);
         setForm((f) => ({
           ...f,
-          full_name: typeof ex.fullName === "string" ? ex.fullName : f.full_name,
+          full_name: extractedName || f.full_name,
           aadhaar_number: typeof ex.aadhaarNumber === "string" ? ex.aadhaarNumber : f.aadhaar_number,
           date_of_birth: typeof ex.dateOfBirth === "string" ? ex.dateOfBirth : f.date_of_birth,
           gender: typeof ex.gender === "string" ? ex.gender : f.gender,
@@ -312,15 +380,28 @@ function CreateCaregiverModal({ onClose, onCreated }: {
         }));
         setAadhaarConfidence(typeof ex.confidence === "number" ? ex.confidence : null);
       } else {
+        const extractedName = typeof ex.holderName === "string" ? ex.holderName : "";
+        setDegreeName(extractedName);
         setForm((f) => ({
           ...f,
-          // Only overwrite name if it's still empty (Aadhaar takes priority)
-          full_name: f.full_name || (typeof ex.holderName === "string" ? ex.holderName : ""),
+          // Aadhaar name takes priority — never overwrite with degree name here.
+          // The mismatch (if any) is surfaced via the warning banner.
           qualification: typeof ex.qualification === "string" ? ex.qualification : f.qualification,
           institution: typeof ex.institution === "string" ? ex.institution : f.institution,
           year_of_passing: typeof ex.yearOfPassing === "number" ? String(ex.yearOfPassing) : f.year_of_passing,
         }));
         setDegreeConfidence(typeof ex.confidence === "number" ? ex.confidence : null);
+
+        // Cross-document name match — block creation if names diverge.
+        if (aadhaarName && extractedName) {
+          const cmp = compareNames(aadhaarName, extractedName);
+          if (!cmp.match) {
+            setError(
+              `Document mismatch — Aadhaar holder is "${aadhaarName}" but degree holder is "${extractedName}". ` +
+              `Re-upload the correct degree certificate, or skip the degree to create an unverified caregiver.`
+            );
+          }
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -331,16 +412,29 @@ function CreateCaregiverModal({ onClose, onCreated }: {
 
   async function handleFinalSubmit() {
     setError("");
+    // Compose the full email from username + domain
+    const fullEmail = `${form.email_username}${form.email_domain}`.toLowerCase();
+
     // Final guard before hitting the server
-    if (!isValidEmail(form.email)) return setError("Please enter a valid email");
+    if (!form.email_username) return setError("Email username is required");
+    if (!USERNAME_RE.test(form.email_username)) return setError("Email username has invalid characters");
+    if (!isValidEmail(fullEmail)) return setError("Resulting email is invalid");
     if (!isValidName(form.full_name)) return setError("Please enter a valid full name");
     if (form.phone && !isValidPhone(normalizePhone(form.phone))) {
       return setError("Please enter a valid phone with country code");
     }
+    // Hard-block on cross-document name mismatch — do not let a verified
+    // account get created when the IDs disagree on who this person is.
+    if (nameMismatchBlocking) {
+      return setError(
+        `Document mismatch — ${nameMatch?.reason || "Aadhaar and degree names do not match."} ` +
+        `Re-upload the correct degree, or remove the degree to create an unverified caregiver.`
+      );
+    }
 
     setSubmitting(true);
     const payload = {
-      email: form.email.trim().toLowerCase(),
+      email: fullEmail,
       password: form.password,
       full_name: form.full_name.trim(),
       phone: form.phone ? normalizePhone(form.phone) : undefined,
@@ -432,36 +526,102 @@ function CreateCaregiverModal({ onClose, onCreated }: {
 
           {/* ── STEP 2: Degree upload ──────────────────────────────── */}
           {step === 2 && (
-            <UploadStep
-              title="Upload Degree / Qualification Certificate"
-              hint="Upload degree, GNM/ANM/BSc Nursing certificate, or any caregiver training credential."
-              preview={degreePreview}
-              extracting={extracting}
-              optional
-              onFile={(f) => handleUpload("degree", f)}
-              extractedSummary={
-                degreePreview && form.qualification ? (
-                  <div className="grid grid-cols-2 gap-2 text-xs mt-3">
-                    <Info label="Qualification" value={form.qualification} />
-                    <Info label="Institution" value={form.institution} />
-                    <Info label="Year" value={form.year_of_passing} />
-                    <Info label="Confidence" value={degreeConfidence ? `${Math.round(degreeConfidence * 100)}%` : "—"} />
+            <>
+              <UploadStep
+                title="Upload Degree / Qualification Certificate"
+                hint="Upload degree, GNM/ANM/BSc Nursing certificate, or any caregiver training credential. Name must match Aadhaar."
+                preview={degreePreview}
+                extracting={extracting}
+                optional
+                onFile={(f) => handleUpload("degree", f)}
+                extractedSummary={
+                  degreePreview && form.qualification ? (
+                    <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                      <Info label="Holder" value={degreeName} />
+                      <Info label="Qualification" value={form.qualification} />
+                      <Info label="Institution" value={form.institution} />
+                      <Info label="Year" value={form.year_of_passing} />
+                      <Info label="Confidence" value={degreeConfidence ? `${Math.round(degreeConfidence * 100)}%` : "—"} />
+                      <Info label="Aadhaar holder" value={aadhaarName} />
+                    </div>
+                  ) : null
+                }
+              />
+
+              {nameMismatchBlocking && (
+                <Button variant="outline" size="sm" onClick={() => {
+                  setDegreePreview(null);
+                  setDegreeName("");
+                  setDegreeConfidence(null);
+                  setForm((f) => ({ ...f, qualification: "", institution: "", year_of_passing: "" }));
+                  setError("");
+                }} className="w-full">
+                  <X className="w-3.5 h-3.5 mr-1.5" />Remove degree (continue as unverified)
+                </Button>
+              )}
+
+              {nameMatch && (
+                nameMatch.match ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-semibold text-emerald-800">
+                        Names match · {Math.round(nameMatch.score * 100)}% similarity
+                      </p>
+                      <p className="text-emerald-700/80">Aadhaar and degree refer to the same person.</p>
+                    </div>
                   </div>
-                ) : null
-              }
-            />
+                ) : (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-semibold text-red-800">
+                        ⛔ Verification rejected · names do not match
+                      </p>
+                      <p className="text-red-700/90 mt-0.5">
+                        Aadhaar: <strong className="font-mono">{aadhaarName}</strong>
+                        {" "}vs Degree: <strong className="font-mono">{degreeName}</strong>
+                        {" "}({Math.round(nameMatch.score * 100)}% similarity).
+                      </p>
+                      <p className="text-red-700/80 mt-1">
+                        Re-upload the correct degree certificate, or remove the degree to create
+                        an unverified caregiver instead.
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+            </>
           )}
 
           {/* ── STEP 3: Confirm + login credentials ────────────────── */}
           {step === 3 && (
             <div className="space-y-4">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
-                <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="text-xs">
-                  <p className="font-semibold text-emerald-800">AI extraction complete</p>
-                  <p className="text-emerald-700/80">Review and edit any field before creating the verified account.</p>
+              {nameMismatchBlocking ? (
+                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-red-800">⛔ Document mismatch — verification rejected</p>
+                    <p className="text-red-700/90 mt-0.5">
+                      Aadhaar holder <strong className="font-mono">&ldquo;{aadhaarName}&rdquo;</strong> does not
+                      match degree holder <strong className="font-mono">&ldquo;{degreeName}&rdquo;</strong>
+                      {nameMatch ? ` (similarity ${Math.round(nameMatch.score * 100)}%)` : ""}.
+                      Re-upload the correct degree, or go back and skip the degree step.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
+                  <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-semibold text-emerald-800">
+                      AI extraction complete
+                      {nameMatch?.match && degreeName ? " · names match" : ""}
+                    </p>
+                    <p className="text-emerald-700/80">Review and edit any field before creating the verified account.</p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <FieldInput
@@ -484,16 +644,54 @@ function CreateCaregiverModal({ onClose, onCreated }: {
                 />
               </div>
 
-              <FieldInput
-                label="Email * (login)"
-                value={form.email}
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                onChange={(v) => update("email", v.replace(/\s/g, "").toLowerCase())}
-                error={emailErr}
-                placeholder="ravi@sevacare.in"
-              />
+              <div>
+                <label className="text-xs font-medium mb-1 block">Email * (login)</label>
+                <div className="flex gap-2">
+                  <Input
+                    value={form.email_username}
+                    onChange={(e) => {
+                      // Strip @ and any whitespace; lowercase
+                      const cleaned = e.target.value.replace(/[@\s]/g, "").toLowerCase();
+                      update("email_username", cleaned);
+                    }}
+                    onPaste={(e) => {
+                      // If user pastes a full email, split it
+                      const txt = e.clipboardData.getData("text").trim();
+                      if (txt.includes("@")) {
+                        e.preventDefault();
+                        const [user, domain] = txt.split("@");
+                        update("email_username", user.replace(/[@\s]/g, "").toLowerCase());
+                        if (domain && EMAIL_DOMAINS.includes("@" + domain.toLowerCase())) {
+                          update("email_domain", "@" + domain.toLowerCase());
+                        }
+                      }
+                    }}
+                    placeholder="hype4shreshth"
+                    autoComplete="off"
+                    inputMode="email"
+                    className={`flex-1 ${usernameErr || emailErr ? "border-red-300 focus-visible:ring-red-200" : ""}`}
+                  />
+                  <select
+                    value={form.email_domain}
+                    onChange={(e) => update("email_domain", e.target.value)}
+                    className="h-10 px-3 rounded-md border border-input bg-background text-sm shrink-0 min-w-[150px]"
+                  >
+                    {EMAIL_DOMAINS.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                {form.email_username && !usernameErr && !emailErr && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Login email: <span className="font-mono">{composedEmail}</span>
+                  </p>
+                )}
+                {(usernameErr || emailErr) && (
+                  <p className="text-[10px] text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />{usernameErr || emailErr}
+                  </p>
+                )}
+              </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <FieldInput
@@ -580,7 +778,11 @@ function CreateCaregiverModal({ onClose, onCreated }: {
           </Button>
           {step < 3 ? (
             <Button onClick={() => { setError(""); setStep(step + 1); }}
-              disabled={extracting || (step === 1 && !aadhaarPreview)}
+              disabled={
+                extracting ||
+                (step === 1 && !aadhaarPreview) ||
+                (step === 2 && nameMismatchBlocking)
+              }
               className="bg-brand hover:bg-brand-dark text-white">
               {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
               {step === 1 ? "Next: Degree" : "Next: Confirm"}
@@ -588,10 +790,15 @@ function CreateCaregiverModal({ onClose, onCreated }: {
             </Button>
           ) : (
             <Button onClick={handleFinalSubmit}
-              disabled={submitting || !!emailErr || !!phoneErr || !!nameErr || !!aadhaarErr || !form.email || !form.full_name}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              disabled={
+                submitting || !!emailErr || !!usernameErr || !!phoneErr || !!nameErr || !!aadhaarErr ||
+                !form.email_username || !form.full_name || nameMismatchBlocking
+              }
+              className={nameMismatchBlocking
+                ? "bg-red-600 hover:bg-red-700 text-white opacity-60 cursor-not-allowed"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"}>
               {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <BadgeCheck className="w-4 h-4 mr-2" />}
-              Create Verified Caregiver
+              {nameMismatchBlocking ? "Rejected — Names Mismatch" : "Create Verified Caregiver"}
             </Button>
           )}
         </div>
