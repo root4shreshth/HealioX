@@ -49,6 +49,73 @@ export async function POST(req: NextRequest) {
     });
     if (orgError) console.error("Org seed error:", orgError);
 
+    // 1b. Seed demo auth users (admin / caregiver / patient / family)
+    // — creates them if missing, force-resets password to demo123456 if they exist
+    //   so the demo login chips on /login always work.
+    const DEMO_USERS = [
+      { email: "admin@aayucare.demo",     full_name: "Demo Admin",            role: "provider_admin" },
+      { email: "caregiver@aayucare.demo", full_name: "Ravi Sharma",           role: "caregiver"      },
+      { email: "patient@aayucare.demo",   full_name: "Sunita Devi (patient)", role: "patient"        },
+      { email: "family@aayucare.demo",    full_name: "Priya Sharma",          role: "family"         },
+    ];
+    const DEMO_PASSWORD = "demo123456";
+
+    const { data: authUsersList } = await supabase.auth.admin.listUsers();
+    const existingByEmail = new Map<string, (typeof authUsersList.users)[number]>();
+    for (const u of authUsersList?.users || []) {
+      if (u.email) existingByEmail.set(u.email.toLowerCase(), u);
+    }
+
+    for (const demo of DEMO_USERS) {
+      const existing = existingByEmail.get(demo.email);
+      let userId: string | null = existing?.id || null;
+
+      if (!existing) {
+        const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+          email: demo.email,
+          password: DEMO_PASSWORD,
+          email_confirm: true,
+          user_metadata: { full_name: demo.full_name, role: demo.role },
+        });
+        if (createErr) {
+          console.error(`[seed] failed to create ${demo.email}:`, createErr.message);
+          continue;
+        }
+        userId = created.user?.id || null;
+      } else {
+        // Force-reset password + role on every seed so stale demos always work
+        await supabase.auth.admin.updateUserById(existing.id, {
+          password: DEMO_PASSWORD,
+          email_confirm: true,
+          user_metadata: { ...(existing.user_metadata || {}), full_name: demo.full_name, role: demo.role },
+        });
+      }
+
+      if (!userId) continue;
+
+      // Profile row — try the rich shape first, fall back if columns are missing
+      const profile: Record<string, unknown> = {
+        id: userId,
+        email: demo.email,
+        full_name: demo.full_name,
+        role: demo.role,
+        org_id: "00000000-0000-0000-0000-000000000001",
+        organization_id: "00000000-0000-0000-0000-000000000001",
+        is_active: true,
+      };
+      let profileErr = (await supabase.from("profiles").upsert(profile)).error;
+      if (profileErr && /column .* does not exist|schema cache|Could not find/.test(profileErr.message)) {
+        delete profile.organization_id;
+        profileErr = (await supabase.from("profiles").upsert(profile)).error;
+      }
+      if (profileErr && /column .* does not exist|schema cache|Could not find/.test(profileErr.message)) {
+        delete profile.org_id;
+        delete profile.is_active;
+        profileErr = (await supabase.from("profiles").upsert(profile)).error;
+      }
+      if (profileErr) console.error(`[seed] profile upsert ${demo.email}:`, profileErr.message);
+    }
+
     // 2. Seed patients (Indian names, cities, conditions)
     const patients = [
       {
